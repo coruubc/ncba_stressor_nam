@@ -2,8 +2,6 @@
 title: 'Examine stressor sensitivities'
 author: "*Compiled on `r date()` by `r Sys.info()['user']`*"
 output: 
-  pdf_document:
-    toc: true
   html_document:
     code_folding: hide
     toc: true
@@ -12,6 +10,8 @@ output:
     number_sections: true
     theme: cerulean
     highlight: haddock
+  pdf_document:
+    toc: true
 ---
 
 ``` {r setup, echo = TRUE, message = FALSE, warning = FALSE}
@@ -30,18 +30,25 @@ select <- dplyr::select
 
 # Summary
 
-Examine the results of the stressor sensitivity scripts.
+Examine the results of the stressor sensitivity scripts from O'Hara et al 2021.
 
 # Methods
 
 ## Species impacted by each stressor
 
-Plotting the number of species impacted by each stressor.  This plot includes species that:
+Plotting the number of species impacted by each stressor and country.  This plot includes species that:
 
 * have an IUCN range map
 * are in a comprehensively assessed taxon (and birds are seabirds)
 * are threatened or near threatened (i.e. not LC or EX)
 * are sensitive to at least one stressor in our study
+* are present in the EEZs of Canada, Mexico and the USA (inlcuding Puerto Rico and Hawaii)
+
+
+## Extract data
+
+Because the original study is global, we had to first extract the data for only the North American countries we were interested in. For that we  combined a series of data available in the repository. The sensitvity data has an `iucn_id` category that can be match to the `range` data tha has an additional column for `eez`. The file `rgn_names_fixed.csv` has that information, note that the column `rgn_id` = `eez` in the `range` data. We selected the regions for 116 - Puerto Rico and Virgin Islands of the United States, 135 - Mexico, 163 - USA, 218 - Canada and further lumped regions 116 and 163 together. The analysis included only the species found in these regions.
+
 
 ```{r fig1a, message=F,warning=F}
 
@@ -77,19 +84,23 @@ na_spp_range <- range %>%
   rename('rgn_id' = 'eez') %>% # because the data have different column names
   left_join(rgn_names,
             by = "rgn_id") %>% 
-  mutate(rgn_label = ifelse(rgn_label == "Puerto Rico and Virgin Islands of the United States","Puerto Rico (USA)",rgn_label)) %>% 
-  select(iucn_sid,rgn_id,rgn_label)
-
-# Get species names
-# iucn_comp_assessed_2020_1 <- read_csv("_data/iucn_comp_assessed_2020-1.csv")
+  mutate(rgn_label = ifelse(rgn_label == "Puerto Rico and Virgin Islands of the United States","United States of America",rgn_label)) %>% 
+  mutate(rgn_label = ifelse(rgn_label == "United States of America","USA",rgn_label)) %>% 
+  select(iucn_sid,rgn_label) %>% 
+  distinct()
 
 # Get the sens data for those selected species
 sens_na_df <- na_spp_range %>% 
   left_join(sens_all_df) 
 
-#### ---- Done North America Selection ####
-# COntinue with O'Hara's original code
 
+```
+
+## Plot panel A
+
+This section is the same as O'Hara *et al* (2021) with the only difference that we are focusing on the countries mentioned above and that the data (plots) are presented by country and not general
+
+```{r}
 
 # Change sens_all_df for sens_na_df below
 spp_incl <- get_incl_spp() %>%
@@ -125,90 +136,69 @@ plot1_df <- sens_df %>%
   arrange(desc(category), n_spp) %>%
   mutate(stressor = fct_inorder(str_desc))
 
-# bar_pal <- c('grey10', 'grey60', 'grey35', 'grey85')
 bar_pal1 <- c(viridisLite::viridis(n = 4, option = 'D'), 'grey90')
 
 n_spp_str <- ggplot(plot1_df, aes(x = stressor, y = n_spp, fill = category)) +
-  # ggtheme_plot(base_size = 9) +
   geom_col() +
   geom_hline(yintercept = 0, color = 'grey30', size = .25) +
   geom_rect(xmin = 1, xmax = 8, ymin = 600, ymax = 200, 
             fill = 'white', color = 'grey90', size = .1) + ### suppress gridlines behind legend
   # scale_fill_viridis_d() +
   scale_fill_manual(values = bar_pal1) +
-  labs(y = '# of sensitive at-risk species',
-       fill = 'Stressor category') +
+  labs(y = 'Sensitive species at-risk (count)',
+       fill = 'Stressor category',
+       x = "Stressor") +
   scale_y_continuous(expand = c(0.02, 0.02), limits = c(0, 150), breaks = seq(0, 150, 25)) +
   coord_flip() +
   # guides(fill = guide_legend(title.position = "top", 
   #                            # hjust = 1 # centres the title horizontally
   #                             title.hjust = 1,
   #                             label.position = "left")) +
-  my_ggtheme_p(ax_tx_s = 8,ax_tl_s = 10,leg_tl_s = 10,leg_tx_s = 8,facet_tx_s = 10,hjust = 0.5, leg_pos = "right")+
+  my_ggtheme_p(ax_tx_s = 8,ax_tl_s = 10,leg_tl_s = 10,leg_tx_s = 8,facet_tx_s = 10,hjust = 0.5, leg_pos = "right") +
   facet_wrap(~rgn_label)
 
 n_spp_str
 ```
 
-## Number of stressor sensitivities per species
+## Plot panbel B
 
-This does not indicate spatial co-occurrence of stressors, just whether a species is sensitive to one, two, or more stressors.
+*Number of stressor sensitivities per species. This does not indicate spatial co-occurrence of stressors, just whether a species is sensitive to one, two, or more stressors.*
+
+Here we maintain the analysis that the original authors did with the only difference that we do not filter out taxons, instead, we show all of them.
+
 
 ```{r fig1b, message=F,warning=F}
-
-# spp_incl <- get_incl_spp() %>%
-  # filter(!is.na(stressor))
 
 str_count_df <- spp_incl %>%
   group_by(iucn_sid, desc) %>%
   summarize(n_str = n_distinct(stressor),
             n_cat = n_distinct(category),
-            strs = paste(unique(stressor), collapse = ', ')) %>%
-  # group_by(desc) %>% 
-  # mutate(desc = ifelse(n_distinct(iucn_sid) < 50, 'other', desc)) %>%
-  ungroup() # %>%
-  # mutate(desc = str_replace(desc, 'mangrove plants', 'mangroves'),
-  #        desc = str_replace(desc, 'reef-building ', ''),
-  #        desc = str_replace(desc, 'marine reptiles', 'reptiles'),
-  #        desc = str_replace(desc, 'sharks and rays', 'sharks/rays'))
+            strs = paste(unique(stressor), collapse = ', ')) %>% 
+  ungroup()
 
-# taxon_order <- str_count_df %>%
-#   filter(desc != 'other') %>%
-#   group_by(desc) %>%
-#   summarize(n = n_distinct(iucn_sid)) %>%
-#   arrange(desc(n)) %>%
-#   .$desc %>%
-#   c(., 'other')
-
+# Finalized dataframe for figure
 plot2_df <- str_count_df %>%
   gather(key = type, value = ct, n_str, n_cat) %>%
   arrange(ct) %>%
   mutate(ct = as.character(ct),
          ct = ifelse(as.integer(ct) > 5, '> 5', ct),
          ct = fct_inorder(ct),
-         type = ifelse(type == 'n_str', '# of stressors (out of 14)', '# of categories (out of 4)')) #%>%
-  # mutate(desc = factor(desc, levels = taxon_order))
+         type = ifelse(type == 'n_str', 'Stressors (number out of 14)', 'Categories (number out of 4)'),
+         desc = str_to_sentence(desc)
+         ) 
 
-
+# Set color
 bar_pal2 <- c(wes_palette("Darjeeling1"),wes_palette("Darjeeling2"))
-# bar_pal <- c(viridisLite::viridis(n = 6, option = 'D')[c(2,4,6,3,5)], 'grey90')
-# bar_pal <- c(viridisLite::viridis(n = 5, option = 'D')[c(1,3,5,2,4)], 'grey90')
-# bar_pal <- c('grey10', 'grey50', 'grey80', 'grey30', 'grey50', 'grey90')
 
 n_str_spp <-
   ggplot(plot2_df, aes(x = ct)) +
   geom_bar(position = 'stack', aes(fill = desc)) +
   geom_hline(yintercept = 0, color = 'grey30', size = .25) +
   theme(strip.placement = 'outside') +
-  my_ggtheme_p(ax_tx_s = 8,ax_tl_s = 10,leg_tl_s = 10,leg_tx_s = 8,facet_tx_s = 10,hjust = 0.5, leg_pos = "right")+
-  # guides(fill = guide_legend(title.position = "top", 
-  #                            # hjust = 1 # centres the title horizontally
-  #                            title.hjust = .6,
-  #                            ncol = 1,
-  #                            label.position = "left")) +
+  my_ggtheme_p(ax_tx_s = 8,ax_tl_s = 10,leg_tl_s = 10,leg_tx_s = 8,facet_tx_s = 10,hjust = 0.5, leg_pos = "right") +
   scale_fill_manual(values = bar_pal2) +
   scale_y_continuous(breaks = seq(0,120,30),limits = c(0,120)) +
-  labs(y = '# of species',
+  labs(y = 'Species (count)',
        fill = 'Taxon',
        x = "") +
   facet_grid(~ type, scales = 'free_x', space = 'free_x', switch = 'x')
@@ -216,6 +206,8 @@ n_str_spp <-
 n_str_spp
 ```
 
+
+## Combine both plots
 
 ``` {r combine, fig.height = 14, fig.width = 12}
 
@@ -227,10 +219,10 @@ fig1 <- ggdraw() +
   draw_label('B', x = 0.002, y = .42, hjust = 0, vjust = 1, 
              size = 10)
 
-fname <- here('ms_figs/ncba_fig1_spp_stressor_sens.png')
+fname <- here('ms_figs/ncba_stressors_fig.png')
 
 ggsave(plot = fig1, filename = fname, 
-       width = 20, height = 20, units = 'cm', dpi = 300)
+       width = 20, height = 15, units = 'cm', dpi = 300)
 
 fig1
 ```
