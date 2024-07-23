@@ -1,4 +1,40 @@
-# README
+# ncba_stressor
+Code for generating the the National Climate-Biodiversity Assessment multi-stressor map
+
+# Obejctive
+Our chapter aims to assess the interaction between climate and other non-climatic stressors on biodiversity.
+
+# Instructions
+Use data from O’Hara et al. (2021) to map out multi-stressors in the EEZs of USA, Canada and Mexico. Perhaps make a figure with panels with some combination of [Fig 1](https://www.science.org/cms/10.1126/science.abe6731/asset/3f5c83c0-9da0-49b9-a17c-7a4624f70421/assets/graphic/372_84_f1.jpeg) and [Fig 2](https://www.science.org/cms/10.1126/science.abe6731/asset/fe156707-b72f-43d0-8874-93a1571053b3/assets/graphic/372_84_f2.jpeg)
+
+- Code and data are available from the Knowledge Network for Biocomplexity - [KNB](https://knb.ecoinformatics.org/view/doi:10.5063/SJ1J03)
+
+- Available code on [GitHub](https://github.com/oharac/bd_chi)
+
+# Time line
+
+- Map draft for July 30
+
+# Data
+
+## Data and code: At-risk marine biodiversity faces extensive, expanding, and intensifying human impacts**
+
+*This work is dedicated to the public domain under the Creative Commons Universal 1.0 Public Domain Dedication. To view a copy of this dedication, visit https://creativecommons.org/publicdomain/zero/1.0/.*
+
+- `bd_chi_master.zip`, Zip file containing all code and generated data from Github repository: https://github.com/oharac/bd_chi. The [README.md](https://github.com/oharac/bd_chi?tab=readme-ov-file#readme) in the root directory describes the file structure and order of operations to replicate the results.
+
+
+# References
+Casey C. O’Hara et al. ,At-risk marine biodiversity faces extensive, expanding, and intensifying human impacts.Science372,84-87(2021).DOI:10.1126/science.abe6731
+
+
+# Note: This repository was cloned from [oharac GitHub](https://github.com/oharac/bd_chi). The original `ReadMe` is below for reference
+
+## Files used / modified
+
+- `ms_figs/fig2_impact_intens_map_3panel.Rmd`, this became `ncba_fig2`
+
+
 
 ## At-risk marine biodiversity faces extensive, expanding, and intensifying human impacts
 
