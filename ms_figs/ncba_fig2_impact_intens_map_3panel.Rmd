@@ -62,19 +62,19 @@ nspp <- raster(here('_output/rasters/n_spp_map.tif'))
 int_pct <- (incr - decr) / nspp
 
 # Load SAU EEZs we are interested in
-# MyFunctions::my_sf("SAU") %>% arrange(name) %>% pull(name) %>% unique() # Check eez names
+MyFunctions::my_sf("SAU") %>% arrange(name) %>% pull(name) %>% unique() # Check eez names
 sau_sf <- MyFunctions::my_sf("SAU") %>% 
   filter(name %in% c(
     "USA (East Coast)","USA (West Coast)","USA (Gulf of Mexico)","USA (Alaska, Arctic)","USA (Alaska, Subarctic)",
-    "Hawaii Main Islands (USA)","Hawaii Northwest Islands (USA)","Puerto Rico (USA)" ,
+    "Hawaii Main Islands (USA)","Hawaii Northwest Islands (USA)","Puerto Rico (USA)" ,"US Virgin Islands","USA (Alaska, Arctic)",
     "Mexico (Pacific)","Mexico (Atlantic)",
     "Canada (Arctic)","Canada (East Coast)","Canada (Pacific)")) %>% 
   st_transform(crs(imp_count))
 
 
 # Get land countries
-# world_land %>% arrange(admin) %>% pull(admin) %>% unique()
-world_land <- rnaturalearth::ne_countries(scale = 'medium', returnclass = c("sf")) %>% 
+# rnaturalearth::ne_countries(scale = 'medium', returnclass = c("sf")) %>% arrange(admin) %>% pull(admin) %>% unique()
+world_land <- rnaturalearth::ne_countries(scale = 'large', returnclass = c("sf")) %>% 
   st_transform(4326) %>% 
   filter(admin %in% c("Canada","United States of America","Puerto Rico","Mexico")) %>% 
   st_shift_longitude()
@@ -232,7 +232,7 @@ fig_2c
 ```{r}
 
 
-  fig2 <-
+fig2 <-
   ggdraw() +
     draw_plot(fig_2a,  x = .0001, y = 0.67, width = 1, height = .33) +
     draw_plot(fig_2b,  x = .01, y = 0.34, width = 1, height = .33) +
