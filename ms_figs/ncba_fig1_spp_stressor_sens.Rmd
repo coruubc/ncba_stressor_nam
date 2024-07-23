@@ -2,6 +2,8 @@
 title: 'Examine stressor sensitivities'
 author: "*Compiled on `r date()` by `r Sys.info()['user']`*"
 output: 
+  pdf_document:
+    toc: true
   html_document:
     code_folding: hide
     toc: true
@@ -10,8 +12,6 @@ output:
     number_sections: true
     theme: cerulean
     highlight: haddock
-  pdf_document:
-    toc: true
 ---
 
 ``` {r setup, echo = TRUE, message = FALSE, warning = FALSE}
@@ -50,7 +50,7 @@ Plotting the number of species impacted by each stressor and country.  This plot
 Because the original study is global, we had to first extract the data for only the North American countries we were interested in. For that we  combined a series of data available in the repository. The sensitvity data has an `iucn_id` category that can be match to the `range` data tha has an additional column for `eez`. The file `rgn_names_fixed.csv` has that information, note that the column `rgn_id` = `eez` in the `range` data. We selected the regions for 116 - Puerto Rico and Virgin Islands of the United States, 135 - Mexico, 163 - USA, 218 - Canada and further lumped regions 116 and 163 together. The analysis included only the species found in these regions.
 
 
-```{r fig1a, message=F,warning=F}
+```{r get_data, message=F,warning=F}
 
 # Get sensitivity data
 sens_all_file <- here('_output', sprintf('spp_sensitivity_%s.csv', api_version))
@@ -100,7 +100,7 @@ sens_na_df <- na_spp_range %>%
 
 This section is the same as O'Hara *et al* (2021) with the only difference that we are focusing on the countries mentioned above and that the data (plots) are presented by country and not general
 
-```{r}
+```{r plot_a, message=F,warning=F}
 
 # Change sens_all_df for sens_na_df below
 spp_incl <- get_incl_spp() %>%
@@ -160,7 +160,7 @@ n_spp_str <- ggplot(plot1_df, aes(x = stressor, y = n_spp, fill = category)) +
 n_spp_str
 ```
 
-## Plot panbel B
+## Plot panel B
 
 *Number of stressor sensitivities per species. This does not indicate spatial co-occurrence of stressors, just whether a species is sensitive to one, two, or more stressors.*
 
