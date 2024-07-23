@@ -19,19 +19,14 @@ output:
 ``` {r setup, echo = TRUE, message = FALSE, warning = FALSE}
 source('https://raw.githubusercontent.com/oharac/src/master/R/common.R')
 
-source(here::here('common_fxns.R'))
-library(cowplot)
+library(MyFunctions)
 
-library(showtext)
-font_add(family = 'bentonbold', 
-         regular = file.path('/Library/Fonts', 
-                             'BentonSans Condensed Bold', 
-                             'BentonSans Condensed Bold.otf'))
-font_add(family = 'benton', 
-         regular = file.path('/Library/Fonts', 
-                             'BentonSans Condensed Book', 
-                             'BentonSans Condensed Book.otf'))
-showtext_auto()
+my_lib(c("cowplot","tidyverse"))
+
+source(here::here('common_fxns.R'))
+
+select <- dplyr::select
+
 ```
 
 
@@ -51,15 +46,57 @@ Plotting the number of species impacted by each stressor.  This plot includes sp
 * are sensitive to at least one stressor in our study
 
 ```{r}
+
+# Get sensitivity data
 sens_all_file <- here('_output', sprintf('spp_sensitivity_%s.csv', api_version))
 
 sens_all_df <- read_csv(sens_all_file, col_types = cols('iucn_sid' = 'i')) %>%
   left_join(read_csv(here('_raw/stressor_names.csv')), by = 'stressor')
 
+#### SELECT ONLY SPECIES FOUND IN NORTH AMERICAN EEZs
+
+# For that we need to combine a series of data disperse in the repo
+# range_from_rasts, gives us the range of each species per EEZ
+range <- read.csv(here("_raw/range_from_rasts.csv"))
+
+# Now we need to figure out what EEZ numbers we are interested in. Which means we need to find the data that gives us 
+# EEZ id and name. Turns out that the file rgn_names_fixed.csv has that information, note that the column rgn_id in such data = eez in the range data
+
+rgn_names <- read.csv(here("_spatial/rgn_names/rgn_names_fixed.csv")) %>% 
+  select(rgn_id, rgn_label) %>%
+  distinct() 
+
+# Lets now filter out the EEZs we want
+# rgn_names %>% arrange(rgn_label) %>% View()
+# 116 - Puerto Rico and Virgin Islands of the United States
+# 135 - Mexico
+# 163 - USA
+# 218 - Canada
+
+# Select only the species from North America
+na_spp_range <- range %>% 
+  filter(eez %in% c(116,135,163,218)) %>% 
+  rename('rgn_id' = 'eez') %>% # because the data have different column names
+  left_join(rgn_names,
+            by = "rgn_id") %>% 
+  mutate(rgn_label = ifelse(rgn_label == "Puerto Rico and Virgin Islands of the United States","Puerto Rico (USA)",rgn_label))
+
+# Get species names
+# iucn_comp_assessed_2020_1 <- read_csv("_data/iucn_comp_assessed_2020-1.csv")
+
+# Get the sens data for those selected species
+sens_na_df <- na_spp_range %>% 
+  left_join(sens_all_df) 
+
+#### ---- Done North America Selection ####
+# COntinue with O'Hara's original code
+
+
+# Change sens_all_df for sens_na_df below
 spp_incl <- get_incl_spp() %>%
   filter(!is.na(stressor))
 
-sens_df <- sens_all_df %>%
+sens_df <- sens_na_df %>%
   filter(sens) %>%
   select(-code, -sens) %>%
   distinct() %>%
@@ -67,14 +104,14 @@ sens_df <- sens_all_df %>%
   mutate(category = tools::toTitleCase(category))
 
 cat_sum_df <- sens_df %>%
-  select(iucn_sid, category) %>%
-  group_by(category) %>%
+  select(iucn_sid, rgn_label,category) %>% # added region
+  group_by(category,rgn_label) %>% # added region
   summarize(n_spp = n_distinct(iucn_sid)) %>%
   arrange(desc(n_spp)) %>%
   mutate(str_desc = category)
   
 plot1_df <- sens_df %>%
-  group_by(str_desc, category) %>%
+  group_by(str_desc, category,rgn_label) %>% # add region
   summarize(n_spp = n()) %>%
   ungroup() %>%
   bind_rows(cat_sum_df) %>%
@@ -84,7 +121,7 @@ plot1_df <- sens_df %>%
   mutate(str_desc = str_replace(str_desc, 'destructive ', 'destr. ')) %>%
   mutate(str_desc = ifelse(str_desc == category, paste0('(Total ', str_desc, ')'), str_desc)) %>%
   mutate(str_desc = ifelse(str_desc == 'Shipping', 'Shipping (Total Ocean-Based)', str_desc)) %>%
-  mutate(category = factor(category, levels = cat_sum_df$category)) %>%
+  # mutate(category = factor(category, levels = cat_sum_df$category)) %>%
   arrange(desc(category), n_spp) %>%
   mutate(stressor = fct_inorder(str_desc))
 
@@ -95,29 +132,20 @@ n_spp_str <- ggplot(plot1_df, aes(x = stressor, y = n_spp, fill = category)) +
   ggtheme_plot(base_size = 9) +
   geom_col() +
   geom_hline(yintercept = 0, color = 'grey30', size = .25) +
-  geom_rect(xmin = 1, xmax = 8, ymin = 600, ymax = 1000, 
+  geom_rect(xmin = 1, xmax = 8, ymin = 600, ymax = 200, 
             fill = 'white', color = 'grey90', size = .1) + ### suppress gridlines behind legend
   # scale_fill_viridis_d() +
   scale_fill_manual(values = bar_pal) +
-  labs(y = '# of sensitive at-risk species (out of 1,271)',
+  labs(y = '# of sensitive at-risk species',
        fill = 'Stressor category') +
-  scale_y_continuous(expand = c(0.02, 0.02), limits = c(0, 1000), breaks = seq(0, 1000, 200)) +
+  scale_y_continuous(expand = c(0.02, 0.02), limits = c(0, 150), breaks = seq(0, 150, 25)) +
   coord_flip() +
   guides(fill = guide_legend(title.position = "top", 
                              # hjust = 1 # centres the title horizontally
                               title.hjust = 1,
                               label.position = "left")) +
-  theme(text = element_text(family = 'benton'),
-        axis.title.y = element_blank(),
-        axis.text.y  = element_text(size = 7),
-        axis.title.x = element_text(size = 7, family = 'bentonbold'),
-        plot.margin = unit(c(0.12, 0.22, 0.5, 0.05), 'cm'),
-        legend.position = c(.96, .01),
-        legend.background = element_blank(),
-        legend.key.size = unit(.30, 'cm'),
-        legend.title = element_text(size = 7, family = 'bentonbold'),
-        legend.text = element_text(size = 7),
-        legend.justification = c(1, 0))
+  my_ggtheme_p(ax_tx_s = 8,ax_tl_s = 10,leg_tl_s = 10,leg_tx_s = 8,facet_tx_s = 10,hjust = 0.5, leg_pos = "right")+
+  facet_wrap(~rgn_label)
 
 n_spp_str
 ```
