@@ -1,0 +1,253 @@
+---
+title: 'Fig 2: impacts and intensification maps'
+author: "*Compiled on `r date()` by `r Sys.info()['user']`*"
+output: 
+  pdf_document:
+    toc: true
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_depth: 3
+    toc_float: yes
+    number_sections: true
+    theme: cerulean
+    highlight: haddock
+---
+
+``` {r setup, echo = TRUE, message = FALSE, warning = FALSE}
+
+library(MyFunctions)
+
+my_lib(
+  c(
+    "tidyverse","raster","cowplot","here","sf"
+  )
+)
+
+
+# Fix new updates of sf package
+sf::sf_use_s2(use_s2 = FALSE)
+
+```
+
+
+# Summary
+
+Create figure 2 for NCBA based on O'Hara et al (2021) manuscript.
+
+# Methods
+
+## Get and Prepare Data
+
+```{r}
+
+# Get O'hara data fro Figure 2
+
+# Load raster data for impacts (Figure 2A and 2B)
+imp_count  <- raster(here('_output/rasters/impact_maps/impact_all_2013.tif')) 
+
+# Load raster data for species impacts (Figure 2B)
+nspp <- raster(here('_output/rasters/n_spp_map.tif')) 
+
+#  Estimate values as O'hara et al
+imp_pct <- imp_count / nspp
+
+
+# Load raster data for number of species (Figure 2C)
+incr <- raster(here('_output/rasters/intens_maps/intens_all_incr2.tif'))
+decr <- raster(here('_output/rasters/intens_maps/intens_all_decr2.tif'))
+nspp <- raster(here('_output/rasters/n_spp_map.tif')) 
+
+# Estimate intencity as per O'hara et al
+int_pct <- (incr - decr) / nspp
+
+# Load SAU EEZs we are interested in
+# MyFunctions::my_sf("SAU") %>% arrange(name) %>% pull(name) %>% unique() # Check eez names
+sau_sf <- MyFunctions::my_sf("SAU") %>% 
+  filter(name %in% c(
+    "USA (East Coast)","USA (West Coast)","USA (Gulf of Mexico)","USA (Alaska, Arctic)","USA (Alaska, Subarctic)",
+    "Hawaii Main Islands (USA)","Hawaii Northwest Islands (USA)","Puerto Rico (USA)" ,
+    "Mexico (Pacific)","Mexico (Atlantic)",
+    "Canada (Arctic)","Canada (East Coast)","Canada (Pacific)")) %>% 
+  st_transform(crs(imp_count))
+
+
+# Get land countries
+# world_land %>% arrange(admin) %>% pull(admin) %>% unique()
+world_land <- rnaturalearth::ne_countries(scale = 'medium', returnclass = c("sf")) %>% 
+  st_transform(4326) %>% 
+  filter(admin %in% c("Canada","United States of America","Puerto Rico","Mexico")) %>% 
+  st_shift_longitude()
+
+# Get SAU codes for matching data
+sau_codes <- my_data("sau_index") %>% 
+  dplyr::select(x = 1, everything()) %>% 
+  filter(x %in% sau_sf$eezid)
+
+# Load SAU as grid to extract data
+# Transform SAU grid to a points sf
+sau_sf <- st_as_sf(my_data("dbem_coords"),
+                    coords = c("lon", "lat"), 
+                    crs = 4326) %>% 
+  st_transform(crs(imp_count)) %>% 
+  filter(index %in% sau_codes$index)
+  
+
+# Ohara's color pallet for figure 2C
+### diverging color palette from ColorBrewer
+div_pal <- c('#8e0152','#c51b7d','#de77ae','#f1b6da','#fde0ef',
+             '#f7f7f7', ### mid color
+             '#e6f5d0','#b8e186','#7fbc41','#4d9221','#276419') %>% rev()
+
+
+
+```
+
+
+## Incorporate data into SAU shapefile
+
+```{r}
+
+
+# Impacts(Figure 2A)
+# Extract raster values at grid points of the SAU SF
+sau_sf$impact_value <- extract(imp_count, sau_sf)
+
+# n species(Figure 2B)
+# Extract raster values at grid points of the SAU SF
+sau_sf$impact_spp <- extract(imp_pct, sau_sf)
+
+
+
+# intensity (Figure 2C)
+# Extract raster values at grid points of the SF
+sau_sf$intense <- extract(int_pct, sau_sf)
+
+
+# Final details of shapefile projection
+sau_oh_sf <- sau_sf %>% 
+  # Filter the region we want
+  st_transform(4326) %>%
+  st_shift_longitude()
+
+
+```
+
+
+
+## Map them
+
+### Fig. 2A: map of impacted spp by count
+
+
+```{r}
+
+fig_2a <- ggplot() +
+  geom_sf(data = sau_oh_sf, aes(color = log10(impact_value)), size = 0.1) +
+  geom_sf(data = world_land, aes(), color = "black") +
+  scale_color_viridis_c(
+    "Species affected\n(n)",
+    breaks = c(0,0.5,1,1.5), 
+    labels = c(0,20,40,60),
+    na.value = 'grey80') +
+  theme_classic() +
+  theme(plot.margin = unit(c(.05, 0, .05, 0), units = 'cm'),
+        legend.background = element_blank(),
+        legend.key.width = unit(.25, 'cm'),
+        axis.text.x = element_blank(),
+        legend.title = element_blank()
+  ) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0))
+
+fig_2a
+```
+
+
+### Fig. 2B: map of impacted species by percentage
+
+```{r}
+
+fig_2b <-
+  ggplot() +
+  geom_sf(data = sau_oh_sf, aes(color = impact_spp), size = 0.1) +
+  geom_sf(data = world_land, aes(), color = "black") +
+  scale_color_viridis_c(
+    "Species affected\n(%)",
+    breaks = seq(0, 1, .25),
+    labels = paste0(seq(0, 100, 25), '%'),
+    na.value = 'grey80') +
+  theme_classic() +
+  theme(plot.margin = unit(c(.05, 0, .05, 0), units = 'cm'),
+        legend.background = element_blank(),
+        legend.key.width = unit(.25, 'cm'),
+        axis.text.x = element_blank(),
+        legend.title = element_blank()
+  ) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0))
+
+
+
+
+fig_2b
+```
+
+### Fig. 2C: map of intensification by percentage
+
+```{r}
+
+fig_2c <-
+  ggplot() +
+  geom_sf(data = sau_oh_sf, aes(color = intense), size = 0.1) +
+  geom_sf(data = world_land, aes(), color = "black") +
+  scale_color_gradientn(
+    "Intensification\n(%)",
+    colors = div_pal,
+    breaks = seq(-1, 1, .5), 
+    labels = paste0(seq(-100, 100, 50), '%'),
+    na.value = 'grey80') +
+  theme_classic() +
+  theme(plot.margin = unit(c(.05, 0, .05, 0), units = 'cm'),
+        legend.background = element_blank(),
+        legend.key.width = unit(.25, 'cm'),
+        axis.text.x = element_text(size = 8),
+        legend.title = element_blank()
+  ) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0))
+
+fig_2c
+
+```
+
+## Combine into one figure
+
+```{r}
+
+
+  fig2 <-
+  ggdraw() +
+    draw_plot(fig_2a,  x = .0001, y = 0.67, width = 1, height = .33) +
+    draw_plot(fig_2b,  x = .01, y = 0.34, width = 1, height = .33) +
+    draw_plot(fig_2c,  x = .003, y = 0.01, width = 1, height = .33) +
+    # draw_plot(fig2a_legend, x = .89, y = 0.67, width = .1, height = .32) +
+    # draw_plot(fig2b_legend, x = .895, y = 0.34, width = .1, height = .32) +
+    # draw_plot(fig2c_legend, x = .9, y = 0.00, width = .1, height = .32) +
+    draw_label('A', x = .1, y = .97, vjust = 0, size = 9, color = 'grey20', fontface = 'bold') +
+    draw_label('B', x = .1, y = .65, vjust = 0, size = 9, color = 'grey20', fontface = 'bold') +
+    draw_label('C', x = .1, y = .33, vjust = 0, size = 9, color = 'grey20', fontface = 'bold') +
+    draw_label('Species impacted\n(count)', x = .92, y = .82, hjust = 0.5, vjust = 1, 
+               size = 8, color = 'grey20', fontface = 'bold', angle = 270) +
+    draw_label('Species impacted\n(percent)', x = .92, y = .50, hjust = 0.5, vjust = 1, 
+               size = 8, color = 'grey20', fontface = 'bold',angle = 270) +
+    draw_label('Intensification\n(percent)', x = .91, y = .18, hjust = 0.5, vjust = 1, 
+               size = 8, color = 'grey20', fontface = 'bold',angle = 270)
+    
+  ggsave(plot = fig2, filename = "ncba_fig2.pdf",
+         height = 20, width = 15, units = 'cm', dpi = 150)
+  
+  print(fig2)
+
+```
+
