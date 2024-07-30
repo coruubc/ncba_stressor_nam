@@ -263,6 +263,7 @@ pal <- wesanderson::wes_palette("Zissou1", 100, type = "continuous")
 chi_map <-
   ggplot() +
   geom_sf(data = sau_chi_sf, aes(color = chi_2013), size = 0.3) +
+  # geom_sf(data = sau_chi_sf %>% mutate(chi_2013 = ifelse(chi_2013 >4,4,chi_2013)), aes(color = chi_2013), size = 0.3) +
   geom_sf(data = world_land, aes(), color = "black") +
     # scale_color_gradientn(
     #   "Cumulative\nhuman impact",
@@ -273,10 +274,12 @@ chi_map <-
     #   ) + 
     scale_color_viridis_c(
       # "Cumulative\nhuman impact",
-      # colours = pal,
       breaks = seq(0,5,1),
       labels = seq(0,5,1),
       limits = c(0,5)
+      # breaks = seq(0,4,1),
+      # labels = c(seq(0,3,1),">4"),
+      # limits = c(0,4)
       ) + 
   theme_classic() +
   my_ggtheme_p(ax_tx_s = 8,ax_tl_s = 10,leg_tl_s = 10,leg_tx_s = 8,facet_tx_s = 10,leg_pos = "right")  +
