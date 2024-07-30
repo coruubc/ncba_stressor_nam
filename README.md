@@ -9,7 +9,9 @@ Use data from O’Hara et al. (2021) to map out multi-stressors in the EEZs of U
 
 - Code and data are available from the Knowledge Network for Biocomplexity - [KNB](https://knb.ecoinformatics.org/view/doi:10.5063/SJ1J03)
 
-- Available code on [GitHub](https://github.com/oharac/bd_chi)
+Also use Halpern's Cummulative Human Impact paper: https://www.nature.com/articles/s41598-019-47201-9 to create a USA-Mexico-Canada version of Figure 1.
+
+- Available code on [GitHub](https://github.com/OHI-Science/impact_acceleration)
 
 # Time line
 
@@ -17,11 +19,20 @@ Use data from O’Hara et al. (2021) to map out multi-stressors in the EEZs of U
 
 # Data
 
-## Data and code: At-risk marine biodiversity faces extensive, expanding, and intensifying human impacts**
+## Data and code: At-risk marine biodiversity faces extensive, expanding, and intensifying human impacts
 
 *This work is dedicated to the public domain under the Creative Commons Universal 1.0 Public Domain Dedication. To view a copy of this dedication, visit https://creativecommons.org/publicdomain/zero/1.0/.*
 
 - `bd_chi_master.zip`, Zip file containing all code and generated data from Github repository: https://github.com/oharac/bd_chi. The [README.md](https://github.com/oharac/bd_chi?tab=readme-ov-file#readme) in the root directory describes the file structure and order of operations to replicate the results.
+
+## Data and code: Rate of change of Cumulative Human Impacts to the ocean
+
+- All stressor, ecosystem, impact and cumulative impact data are available at [knb](https://doi.org/10.5063/F12B8WBS) and all code are at [GitHub](https://github.com/OHI-Science/impact_acceleration).
+
+- (GitHub data)[https://github.com/OHI-Science/impact_acceleration/tree/master/paper]
+  - eez_chi.csv, Comulative Human impact per EEZ
+  - Fu=igures, rasters to make figure 1
+
 
 
 # References
