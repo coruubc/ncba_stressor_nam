@@ -17,18 +17,35 @@ pdf_document:
 ---
   
 ```{r}
-library(tidyr)
-library(dplyr)
-library(raster)
+
+library(MyFunctions)
+
+my_lib(c(
+  "tidyverse",
+  "sf",
+  "here",
+  "raster",
+  "sp"
+))
+
+
+# Fix new updates of sf package
+sf::sf_use_s2(use_s2 = FALSE)
+
+select <- dplyr::select
+
+# library(tidyr) Erase
+# library(dplyr) Erase
+# library(raster)
 library(RColorBrewer)
 library(rgdal)
-library(sf)
+# library(sf)
 library(gstat)
 library(stringr)
 library(fields)
 library(cowplot)
 library(beyonce)
-library(here)
+# library(here)
 
 # load spatial files (ocean raster and regions shapefile)
 
@@ -47,6 +64,8 @@ chi_label_sequence <- c(1, 3,  5,   7, 9,  11, 13, 15, 17)
 
 # Map of CHI
 
+This is figure 1 B
+
 ```{r chi_map}
 
 ## function to make plots
@@ -54,11 +73,16 @@ chi_label_sequence <- c(1, 3,  5,   7, 9,  11, 13, 15, 17)
 legend.shrink <- 0.7
 legend.width <- 0.7
 
-source(here("paper/figures/chi_plot_function.R"))
 
-for(year in 2003:2013){ # year = 2013
-  png(sprintf("paper/figures/chi_maps/chi_%s.png", year), res=500, width=6, height=3, units="in")  
-  p_rast <- raster(file.path(dir_M, sprintf("git-annex/impact_acceleration/impact/cumulative_impact/chi_%s.tif", year)))
+source(here("ms_figs/ncba_chi_plot_function.R"))
+
+for(year in 2003:2013){ #year = 2013
+  # png(sprintf("paper/figures/chi_maps/chi_%s.png", year), res=500, width=6, height=3, units="in")  
+    png(sprintf("paper/figures/chi_maps/chi_%s.png", year), res=500, width=6, height=3, units="in")
+  
+  # p_rast <- raster(file.path(dir_M, sprintf("git-annex/impact_acceleration/impact/cumulative_impact/chi_%s.tif", year)))
+  p_rast <- raster(file.path(dir_M, sprintf("~/Library/CloudStorage/OneDrive-UBC/Data/ncba_stressor_nam/Data/chi/data//chi_%s.tif", year)))
+                
   chi_plot(raster_data=p_rast,  title="", 
                 cols=chi_cols, color_breaks = chi_breaks,
                 legend_break_labels = chi_legend_labels,
@@ -91,6 +115,143 @@ dev.off()
 
 
 
+## EEZ CHI data exploration
+
+data used `eez_chi.csv`
+
+```{r}
+
+eez_chi <- my_path("D","chi","eez_chi.csv", read = T)
+
+# north_america <- 
+  eez_chi %>% 
+  filter(rgn_id %in% c(116,135,163,218)) %>% 
+    group_by(rgn_name) %>% 
+    summarise(
+      mean_eez_chi = mean(value, na.rm = T)
+    ) %>% 
+    ggplot() +
+    geom_point(
+      aes(
+        x = reorder(rgn_name,mean_eez_chi),
+        y = mean_eez_chi,
+        color = rgn_name
+      )
+    )
+
+```
+
+
+## CHI trend Figure 1A
+
+### Get data
+data used `cumulative_impact_trend_2003-2013.tif`
+
+
+```{r}
+
+# Get slope data from Halpern et al (2019)
+slope <- raster(my_path("D","chi","cumulative_impact_trend_2003-2013.tif"))
+# Plot to make sure it is the correct data
+# trend_plot(plotRaster=slope, overlay=FALSE)
+
+
+# Load SAU EEZs we are interested in
+# MyFunctions::my_sf("SAU") %>% arrange(name) %>% pull(name) %>% unique() # Check eez names
+sau_sf <- MyFunctions::my_sf("SAU") %>%
+  filter(name %in% c(
+    "USA (East Coast)","USA (West Coast)","USA (Gulf of Mexico)","USA (Alaska, Arctic)","USA (Alaska, Subarctic)",
+    "Hawaii Main Islands (USA)","Hawaii Northwest Islands (USA)","Puerto Rico (USA)" ,"US Virgin Islands","USA (Alaska, Arctic)",
+    "Mexico (Pacific)","Mexico (Atlantic)",
+    "Canada (Arctic)","Canada (East Coast)","Canada (Pacific)")) %>%
+  rename(sf_eez_name = name) %>% 
+  left_join(my_path("Spa","SAU","sau_matching_names.csv", read = T)) %>% 
+  select(sf_eez_name, name = un_country,eezid) %>% 
+  st_transform(crs(slope))
+
+# Get land countries
+# rnaturalearth::ne_countries(scale = 'medium', returnclass = c("sf")) %>% arrange(admin) %>% pull(admin) %>% unique()
+world_land <- rnaturalearth::ne_countries(scale = 'large', returnclass = c("sf")) %>% 
+  st_transform(4326) %>% 
+  filter(admin %in% c("Canada","United States of America","Puerto Rico","Mexico")) %>% 
+  st_shift_longitude()
+
+# Get SAU codes for matching data
+sau_codes <- my_data("sau_index") %>% 
+  dplyr::select(x = 1, everything()) %>% 
+  filter(x %in% sau_sf$eezid)
+
+# Load SAU as grid to extract data
+# Transform SAU grid to a points sf
+sau_sf <- st_as_sf(my_data("dbem_coords"),
+                    coords = c("lon", "lat"), 
+                    crs = 4326) %>% 
+  st_transform(crs(slope)) %>% 
+  filter(index %in% sau_codes$index)
+  
+
+# Ohara's color pallet for figure 2C
+### diverging color palette from ColorBrewer
+div_pal <- c('#8e0152','#c51b7d','#de77ae','#f1b6da','#fde0ef',
+             '#f7f7f7', ### mid color
+             '#e6f5d0','#b8e186','#7fbc41','#4d9221','#276419') %>% rev()
+
+
+
+```
+
+
+### Incorporate data into SAU shapefile
+
+```{r}
+
+# Extract raster values at grid points of the SAU SF
+sau_sf$chi_value <- extract(slope, sau_sf)
+
+# Final details of shapefile projection
+sau_chi_sf <- sau_sf %>% 
+  # Filter the region we want
+  st_transform(4326) %>%
+  st_shift_longitude()
+
+
+```
+
+### Map it
+
+
+```{r}
+# fig_2a <-
+  ggplot() +
+  geom_sf(data = sau_chi_sf, aes(color = chi_value), size = 0.1) +
+  geom_sf(data = world_land, aes(), color = "black") +
+  scale_color_gradient2(
+    "Anual change in\ncumulative impact",
+    low = "#3B9AB2", mid = "white", high = "#F21A00",
+    breaks = c(-0.2,-0.1,0,0.1,0.2),
+    labels = c(-0.2,-0.1,0,0.1,0.2),
+    na.value = 'grey80') +
+  theme_classic() +
+  my_ggtheme_p(ax_tx_s = 8,ax_tl_s = 10,leg_tl_s = 10,leg_tx_s = 8,facet_tx_s = 10,leg_pos = "right")  +
+    theme(plot.margin = unit(c(.05, 0, .05, 0), units = 'cm'),
+        # legend.background = element_blank(),
+        legend.key.width = unit(.25, 'cm'),
+        # axis.text.x = element_blank(),
+        # legend.title = element_blank()
+  ) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0))
+
+# fig_2a
+
+```
+
+
+
+
+
+
+#Original Code below
 
 # High/low trend and chi raster
 ```{r extremes_tif}

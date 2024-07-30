@@ -30,7 +30,7 @@ chi_plot <- function(raster_data, title, title_legend=NULL, title_size = 1,
                      axis.args=list(cex.axis=0.6, at=legend_label_locations, labels=legend_break_labels))
   }
   
-  plot(land, add=TRUE, border="gray80", col="gray90", lwd=0.5)
+  # plot(land, add=TRUE, border="gray80", col="gray90", lwd=0.5)
 }
 
 
@@ -62,7 +62,7 @@ trend_plot <- function(plotRaster, scaleRaster=plotRaster, overlay=TRUE, overlay
     plot(overlay_rast, col="#ffffff", add=TRUE, legend=FALSE, box=FALSE)
   }
   
-  plot(land, add=TRUE, border="gray80", col="gray90", lwd=0.5)
+  # plot(land, add=TRUE, border="gray80", col="gray90", lwd=0.5)
   
   if(legend){
   par(mfrow=c(1, 1), mar=c(1, 0, 1, 0), new=FALSE)
