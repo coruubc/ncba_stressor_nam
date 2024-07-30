@@ -25,7 +25,8 @@ my_lib(c(
   "sf",
   "here",
   "raster",
-  "sp"
+  "sp",
+  "cowplot"
 ))
 
 
@@ -142,11 +143,10 @@ eez_chi <- my_path("D","chi","eez_chi.csv", read = T)
 ```
 
 
-## CHI trend Figure 1A
+## CHI trend Figure 1A and 1B
 
 ### Get data
-data used `cumulative_impact_trend_2003-2013.tif`
-
+data used `cumulative_impact_trend_2003-2013.tif` from knb
 
 ```{r}
 
@@ -155,6 +155,9 @@ slope <- raster(my_path("D","chi","cumulative_impact_trend_2003-2013.tif"))
 # Plot to make sure it is the correct data
 # trend_plot(plotRaster=slope, overlay=FALSE)
 
+
+# CHI for 2013
+chi_2013 <- raster(my_path("D","chi","cumulative_impact_2013.tif"))
 
 # Load SAU EEZs we are interested in
 # MyFunctions::my_sf("SAU") %>% arrange(name) %>% pull(name) %>% unique() # Check eez names
@@ -205,8 +208,11 @@ div_pal <- c('#8e0152','#c51b7d','#de77ae','#f1b6da','#fde0ef',
 
 ```{r}
 
-# Extract raster values at grid points of the SAU SF
+# Extract slope raster values at grid points of the SAU SF
 sau_sf$chi_value <- extract(slope, sau_sf)
+
+# Extract chi 2013 raster values at grid points of the SAU SF
+sau_sf$chi_2013 <- extract(chi_2013, sau_sf)
 
 # Final details of shapefile projection
 sau_chi_sf <- sau_sf %>% 
@@ -219,14 +225,15 @@ sau_chi_sf <- sau_sf %>%
 
 ### Map it
 
+#### Slope Figure
 
 ```{r}
-# fig_2a <-
+slope_map <-
   ggplot() +
-  geom_sf(data = sau_chi_sf, aes(color = chi_value), size = 0.1) +
+  geom_sf(data = sau_chi_sf, aes(color = chi_value), size = 0.3) +
   geom_sf(data = world_land, aes(), color = "black") +
   scale_color_gradient2(
-    "Anual change in\ncumulative impact",
+    # "Anual change in\ncumulative impact",
     low = "#3B9AB2", mid = "white", high = "#F21A00",
     breaks = c(-0.2,-0.1,0,0.1,0.2),
     labels = c(-0.2,-0.1,0,0.1,0.2),
@@ -237,318 +244,94 @@ sau_chi_sf <- sau_sf %>%
         # legend.background = element_blank(),
         legend.key.width = unit(.25, 'cm'),
         # axis.text.x = element_blank(),
-        # legend.title = element_blank()
+        legend.title = element_blank()
   ) +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0))
 
-# fig_2a
+slope_map
 
 ```
 
 
+#### CHI Figure
+
+```{r}
+
+pal <- wesanderson::wes_palette("Zissou1", 100, type = "continuous")
+
+chi_map <-
+  ggplot() +
+  geom_sf(data = sau_chi_sf, aes(color = chi_2013), size = 0.3) +
+  geom_sf(data = world_land, aes(), color = "black") +
+    # scale_color_gradientn(
+    #   "Cumulative\nhuman impact",
+    #   colours = pal,
+    #   breaks = seq(0,5,1),
+    #   labels = seq(0,5,1),
+    #   limits = c(0,5)
+    #   ) + 
+    scale_color_viridis_c(
+      # "Cumulative\nhuman impact",
+      # colours = pal,
+      breaks = seq(0,5,1),
+      labels = seq(0,5,1),
+      limits = c(0,5)
+      ) + 
+  theme_classic() +
+  my_ggtheme_p(ax_tx_s = 8,ax_tl_s = 10,leg_tl_s = 10,leg_tx_s = 8,facet_tx_s = 10,leg_pos = "right")  +
+    theme(plot.margin = unit(c(.05, 0, .05, 0), units = 'cm'),
+        # legend.background = element_blank(),
+        legend.key.width = unit(.25, 'cm'),
+        axis.text.x = element_blank(),
+        legend.title = element_blank()
+  ) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0))
+
+chi_map
+
+```
+
+
+## Panel 
+
+```{r}
+chi_panel <-
+  ggdraw() +
+    draw_plot(chi_map,  x = .0001, y = 0.5, width = 0.90, height = .49) +
+    draw_plot(slope_map,  x = .01, y = 0, width = 0.90, height = .49) +
+    draw_label('A', x = .04, y = .98, vjust = 0, size = 10, color = 'black') +
+    draw_label('B', x = .04, y = .50, vjust = 0, size = 10, color = 'black') +
+    draw_label('Cumulative human impact\n(2013)', x = .94, y = .75, hjust = 0.5, vjust = 1,
+               size = 8, color = 'black', angle = 270) +
+    draw_label("Anual change in cumulative impact\n(2003-2013)", x = .95, y = .25, hjust = 0.5, vjust = 1,
+               size = 8, color = 'black',angle = 270) +
+    # draw_label('Intensification\n(percent)', x = .91, y = .18, hjust = 0.5, vjust = 1, 
+    #            size = 8, color = 'black', angle = 270) + 
+  theme(plot.background = element_rect(fill="white", color = NA))
+    
+  ggsave(plot = chi_panel, filename = "ncba_chi_map.png",
+         height = 20, width = 15, units = 'cm', dpi = 300)
+  
+  print(chi_panel)
+
+```
 
 
 
 
 #Original Code below
 
-# High/low trend and chi raster
-```{r extremes_tif}
 
-# create rasters here
 
-#################################
-# Raster identifying negative and positive slope trends 
-slope <- raster(file.path(dir_M, 'git-annex/impact_acceleration/impact/trend/chi_slope.tif'))
 
-# negative and zero slope is 1 and positive slope 0
-# default is right is closed, which means the interval includes the endpoint
-m <- c(-Inf, 0, 0,   
-       0, Inf, 1)
 
-rclmat <- matrix(m, ncol=3, byrow=TRUE)
 
-reclassify(slope, rclmat, 
-           filename = file.path(dir_M, 'git-annex/impact_acceleration/paper/figures/slope_pos_neg.tif'), overwrite=TRUE, progress="text")
 
-slope_p_n <- raster(file.path(dir_M, 'git-annex/impact_acceleration/paper/figures/slope_pos_neg.tif'))
-plot(slope_p_n)
-freq(slope_p_n)
-#    value     count
-#     value     count
-#     0  77581546
-#     1 338609255
-#    NA 329175249
-77581546/(77581546+338609255)
-# 19% decreasing trend
 
-# ###################################
-# ## slope 
-# 
-# identify quantiles
-slope <- raster(file.path(dir_M, 'git-annex/impact_acceleration/impact/trend/chi_slope.tif'))
-raster::quantile(slope, probs=c(0.1, 0.20, 0.25, 0.5, 0.75, 0.80, 0.90))
 
-#         10%          20%          25%          50%          75%          80%          90% 
-# -0.017325277  0.001684363  0.006271903  0.033656970  0.077449173  0.088130884  0.116197392 
 
-## Slope: Identify rasters with <=0 and >80th quantile
-slope <- raster(file.path(dir_M, 'git-annex/impact_acceleration/impact/trend/chi_slope.tif'))
-
-m <- c(-Inf, 0, 0,
-       0, 0.088130884, NA,
-       0.088130884, Inf ,1)
-rclmat <- matrix(m, ncol=3, byrow=TRUE)
-
-reclassify(slope, rclmat,
-           filename = file.path(dir_M, 'git-annex/impact_acceleration/paper/figures/slope_upper_lower_quants.tif'), overwrite=TRUE, progress="text")
-
-slope_extreme <-  raster(file.path(dir_M, 'git-annex/impact_acceleration/paper/figures/slope_upper_lower_quants.tif'))
-plot(slope_extreme)
-#freq(slope_extreme)
-
-
-## CHI
-
-chi <- raster(file.path(dir_M, "git-annex/impact_acceleration/impact/cumulative_impact/chi_2013.tif"))
-
-raster::quantile(chi, probs=c(0.1, 0.20, 0.25, 0.5, 0.75, 0.80, 0.90))
-#      10%       20%       25%       50%       75%       80%       90% 
-# 0.3522482 0.5831025 0.6792569 1.0132389 1.4066660 1.5279793 1.8737746 
-
-## Identify rasters with values <20th and >80th quantiles
-
-m <- c(-Inf, 0.5831025, -1,   
-       0.5831025, 1.5279793, NA,  
-       1.5279793, Inf ,1)
-rclmat <- matrix(m, ncol=3, byrow=TRUE)
-
-reclassify(chi, rclmat, 
-           filename = file.path(dir_M, 'git-annex/impact_acceleration/paper/figures/chi_upper_lower_quants.tif'), overwrite=TRUE, progress="text")
-
-chi_extreme <-  raster(file.path(dir_M, 'git-annex/impact_acceleration/paper/figures/chi_upper_lower_quants.tif'))
-plot(chi_extreme)
-#freq(chi_extreme)
-
-## combine the two
-
-chi_slope <- stack(slope_extreme, chi_extreme)
-overlay(chi_slope, fun=function(x,y){x + y}, 
-        filename = file.path(dir_M, 'git-annex/impact_acceleration/paper/figures/chi_slope_extremes.tif'), overwrite=TRUE, progress="text")
-
-## check it out
-chi_slope <- raster(file.path(dir_M, 'git-annex/impact_acceleration/paper/figures/chi_slope_extremes.tif'))
-plot(chi_slope)
-freq(chi_slope)
-#    -1  26892714 4.1%, low chi, decreasing trend
-#     0    80685 <1%, low chi, fast increasing trend
-#     1  4210712 0.6%, high chi, decreasing trend
-#     2   48084132 7.4%, high chi, fast increasing trend
-#    NA 666097807
-# total ocean: 648429346
-
-```
-
-```{r plot_extremes}
-
-# plot raster created above
-chi_slope <- raster(file.path(dir_M, 'git-annex/impact_acceleration/paper/figures/chi_slope_extremes.tif'))
-
-my_breaks <- c(-2, -1, 0, 1, 3)
-beyonce_palettes[[18]]
-beyonce_palette(127)
-# blue, light brown , black , red
-cols = c( "#018AC4", "#EBC915", "#550133", "#CF2154")
-labels=c("low/\ndecrease", "low/\nfast increase", "high/\ndecrease", "high/\nfast increase")
-
-legend.shrink <- 0.7
-legend.width <- 0.7
-png("paper/figures/trend/chi_trend_extremes_4_cats.png", res=600, width=6, height=3, units="in") 
-par(mar=c(1, 1, 1, 2))
-par(oma=c(0,0,0,0))
-plot(chi_slope, col=cols, axes=FALSE, box=FALSE, breaks=my_breaks, legend=FALSE)
-# add axis with fields package function:
-def_breaks <- c(0, 1, 2, 3, 4)
-fields::image.plot(chi_slope, #zlim = c(min(myBreaks), max(myBreaks)), 
-                   legend.only = TRUE, 
-                   legend.shrink=legend.shrink,
-                   legend.width=legend.width,
-                   col = cols,
-                   breaks=def_breaks,
-                   #lab.breaks=labels,
-                   axis.args = list(cex.axis = 0.6, at=c(0.5, 1.5, 2.5, 3.5), labels=labels))
-plot(land, add=TRUE, border="gray80", col="gray90", lwd=0.5)
-dev.off()
-
-# make another version with overlay
-overlay_rast <- raster(file.path(dir_M,  'git-annex/impact_acceleration/impact/trend/sig_overlay.tif'))
-png("paper/figures/trend/chi_trend_extremes_4_cats_sig_overlay.png", res=600, width=6, height=3, units="in") 
-par(mar=c(1, 1, 1, 2))
-par(oma=c(0,0,0,0))
-plot(chi_slope, col=cols, axes=FALSE, box=FALSE, breaks=my_breaks, legend=FALSE)
-# add axis with fields package function:
-def_breaks <- c(0, 1, 2, 3, 4)
-fields::image.plot(chi_slope, #zlim = c(min(myBreaks), max(myBreaks)), 
-                   legend.only = TRUE, 
-                   legend.shrink=legend.shrink,
-                   legend.width=legend.width,
-                   col = cols,
-                   breaks=def_breaks,
-                   #lab.breaks=labels,
-                   axis.args = list(cex.axis = 0.6, at=c(0.5, 1.5, 2.5, 3.5), labels=labels))
-plot(land, add=TRUE, border="gray80", col="gray90", lwd=0.5)
-plot(overlay_rast, col="#ffffffbf", add=TRUE, legend=FALSE, box=FALSE)
-dev.off()
-
-
-```
-
-
-## Extremes map density plot
-
-Extract the data for each response from the raster (high/low slope and chi) and save (5 parts):"impacts/figures/map_histogram_data/lat_extreme_N_%s.csv"
-```{r}
-
-extremes <- raster(file.path(dir_M, 'git-annex/impact_acceleration/paper/figures/chi_slope_extremes.tif'))
-
-x_count <- function(x, raster=extremes){
-  tmp <- getValues(raster, row=x)
-  table(tmp)
-}
-
-start_time <- Sys.time()
-tmp <- lapply(1:100, x_count)
-end_time <- Sys.time()
-
-end_time - start_time
-
-extreme_N <- purrr::map_df(tmp, dplyr::bind_rows)
-
-# ocean
-
-ocean_count <- function(x, raster=ocean){
-  tmp <- getValues(raster, row=x)
-  table(tmp)
-}
-start_time <- Sys.time()
-tmp2 <- lapply(1:100, ocean_count)
-end_time <- Sys.time()
-
-end_time - start_time
-
-ocean_N <- purrr::map_df(tmp2, dplyr::bind_rows) 
-names(ocean_N) <- "N_ocean_cells"
-
-##
-prop_cells <- cbind(extreme_N, ocean_N)
-
-
-## Do in parallel
-library(doParallel)
-library(foreach)
-library(parallel)
-
-pullfrom <- data.frame(min = c(1, 3862, 7723, 11584, 15445), 
-                       max = c(3861, 7722, 11583, 15444, 19305),
-                       lab=c("part1", "part2", "part3", "part4", "part5"))
-
-registerDoParallel(5)
-
-foreach(run = 1:5) %dopar%{ # run=4
-  
-  extremes <- raster::raster(file.path(dir_M, 'git-annex/impact_acceleration/paper/figures/chi_slope_extremes.tif'))
-  
-  x_count <- function(x, raster=extremes){
-    tmp <- raster::getValues(raster, row=x)
-    table(tmp)
-  }
-  
-  tmp <- lapply(pullfrom$min[run]:pullfrom$max[run], x_count)
-  
-  extreme_N <- purrr::map_df(tmp, dplyr::bind_rows) %>%
-    data.frame()
-  
-  write.csv(extreme_N, sprintf("paper/figures/map_histogram_data/lat_extreme_N_%s.csv", 
-                               pullfrom$lab[run]), row.names=FALSE)
-  
-}
-```
-
-Compile the data extracted from the rasters.
-
-```{r}
-ocean_N <- rowSums(ocean, na.rm=TRUE)
-
-
-lat_data <- bind_rows(
-  read.csv("paper/figures/map_histogram_data/lat_extreme_N_part1.csv"),
-  read.csv("paper/figures/map_histogram_data/lat_extreme_N_part2.csv"),
-  read.csv("paper/figures/map_histogram_data/lat_extreme_N_part3.csv"),
-  read.csv("paper/figures/map_histogram_data/lat_extreme_N_part4.csv"),
-  read.csv("paper/figures/map_histogram_data/lat_extreme_N_part5.csv")
-)
-
-lat_data <- cbind(lat_data, ocean_N)
-
-names(lat_data) <- c("high_decrease", "high_fast", "low_decrease", "low_fast", "ocean_N")
-
-lat_data[is.na(lat_data)] <- 0
-lat_data$row_id = 1:dim(lat_data)[1]
-
-# A dataset with proportion of cells:
-# (currently not using this one)
-lat_data_plot <-lat_data %>%
-  mutate(prop_low_decrease = low_decrease/ocean_N) %>%
-  mutate(prop_high_fast = high_fast/ocean_N) %>%
-  mutate(prop_high_decrease = high_decrease/ocean_N) %>%
-  mutate(prop_low_fast = low_fast/ocean_N)
-
-library(zoo)
-lat_data_plot2 <- gather(lat_data, "category", "cells", -ocean_N, -row_id) 
-
-# grouping varible for combining lats
-# this is my smoothing function
-grouping_id <- lat_data %>%
-  arrange(row_id) %>%
-  mutate(group_id = gl(ceiling(nrow(.)/100), 100, nrow(.))) %>%
-  dplyr::select(row_id, group_id)
-
-
-lat_data_plot2_smooth <- lat_data_plot2 %>%
-  left_join(grouping_id) %>%
-  group_by(category, group_id) %>%
-  summarize(row_id=unique(group_id),
-            cells = sum(cells)) %>%
-  ungroup() %>%
-  mutate(category = as.factor(category)) %>%
-  mutate(row_id = as.numeric(as.character(row_id)))
-
-ggplot(lat_data_plot2_smooth) +
-  geom_ribbon(aes(ymin = 0, ymax = cells, x=row_id, y=cells, group=category, fill=category)) +
-  geom_line(aes(x=row_id, y=cells, group=category, color=category), size=0.3) +
-  scale_x_reverse() +
-  coord_flip() + 
-  #  facet_grid(. ~ category) +
-  scale_color_manual(values = c("#EBC915", "#018AC4", "#550133", "#CF2154"),
-                     limits = c("low_fast", "low_decrease", "high_decrease", "high_fast")) +
-  scale_fill_manual(values = c("#EBC915", "#018AC44D", "#33271BA6", "#CF21544D"),
-                    limits = c("low_fast", "low_decrease", "high_decrease", "high_fast")) +
-  theme(
-    strip.background = element_blank(),
-    strip.text = element_blank(),
-    axis.title = element_blank(),
-    axis.text  = element_blank(),
-    axis.ticks =element_blank(),
-    axis.line = element_blank(),
-    panel.border = element_blank(),
-    panel.grid = element_blank(),
-    panel.spacing = unit(-3, "lines"),
-    legend.position = "none")
-
-ggsave("paper/figures/map_histogram_data/latitudinal_extremes.png", width=3, height=5, units=c("in"), dpi=300)
-
-```
 
 # region zooms
 
