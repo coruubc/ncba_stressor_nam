@@ -1,0 +1,1175 @@
+---
+title: "Untitled"
+author: "Juliano Palacios-Abrantes"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+
+```{r setup}
+
+
+library(MyFunctions)
+
+my_lib(c("tidyverse","Rmisc","grid","gridExtra", # Fig 1
+         "purrr","igraph","readr","raster", # Fig 4
+         "sf","ebvcube","xlsx", # Regional analysis script
+         "lubridate","BiocManager","HDF5Array"
+) 
+)
+
+
+```
+
+
+
+# Instructions
+
+Code modified from thta provided by Pereira et al. (2024). Global trends and scenarios for terrestrial biodiversity and ecosystem services from 1900-2050. Science https://doi.org/10.1126/science.adn3441. 
+
+## Re-do Global analysis
+
+In this part we are going to re-do the global analysis from Pereira *et al.* (2024) but only for the North America region that we are interested in. Original code in script `BES-SIM_statistics_global.R`
+
+### Extra analysis (subset ncdfs to North America)
+
+The fix I found is to crop the original rasters to North America and re-save them so we can still apply the `ebv_analyse` function. 
+
+```{r}
+library(ncdf4)
+
+netcdf_files <- list.files(my_path("D",extra_path = "hpereira/ncdf_global_data"),full.names = T)
+
+# Define the extent for North America
+lat_min <- 10  # Latitude minimum
+lat_max <- 90  # Latitude maximum
+lon_min <- -180  #Longitude minimum
+lon_max <- -50  # Longitude maximum
+
+i = 1
+# for(i in 1:length(netcdf_files)){
+
+# Load the NetCDF data as a terra Raster
+# original_ncdf <- rast(netcdf_files[i])
+original_ncdf <- nc_open(netcdf_files[i])
+
+
+# Extract data
+latitudes <- ncvar_get(original_ncdf, "lat")  # Change "lat" to the actual variable name
+longitudes <- ncvar_get(original_ncdf, "lon")  # Change "lon" to the actual variable name
+
+# Find indices for cropping
+lat_indices <- which(latitudes >= lat_min & latitudes <= lat_max)
+lon_indices <- which(longitudes >= lon_min & longitudes <= lon_max)
+
+# Get variables in data
+variable_names <- setdiff(names(original_ncdf$var), c("lat", "lon", "time","crs"))  # Adjust if dimension names are different
+
+# Crop the data
+# Create a list to store cropped data
+cropped_data_list <- list()
+
+# Loop through each variable to crop
+# for (var_name in variable_names) {
+# Extract the variable data
+var_data <- ncvar_get(original_ncdf, var_name)
+
+# Crop the data (assuming dimensions are lat, lon, and time)
+time_index <- 1  
+cropped_data <- var_data[lat_indices, lon_indices, time_index]
+
+# }
+
+# Close the NetCDF file
+nc_close(original_ncdf)
+
+
+# }
+
+
+
+# Convert cropped data to a data frame for plotting
+plot_data <- expand.grid(Lat = latitudes[lat_indices], Lon = longitudes[lon_indices])
+plot_data$Value <- as.vector(cropped_data)
+
+
+
+ggplot() +
+  geom_tile(data = plot_data, 
+            aes(x = Lon,
+                y = Lat, 
+                fill = Value,
+                color = Value)) +
+  scale_fill_viridis_c() +
+  scale_color_viridis_c() +
+  labs(title = paste("Plot of", var_name, "at Time Step", time_index),
+       x = "Longitude",
+       y = "Latitude",
+       fill = "Value") +
+  theme_minimal() +
+  my_land_map()
+
+
+# Weid... Data is not matching projection
+summary(plot_data$Lat)
+summary(plot_data$Lon)
+
+
+# Convert to sf object
+plot_data_sf <- st_as_sf(plot_data, coords = c("Lon", "Lat"), crs = 4326)
+
+ggplot() +
+  geom_sf(data = plot_data_sf, aes(color = Value)) +
+  my_land_map() +
+  scale_color_viridis_c() 
+
+
+```
+
+
+### Functions needed
+
+```{r}
+
+#list all files
+ebvfiles <- list.files(my_path("D",extra_path = "hpereira/ncdf_data"),full.names = T)
+
+df<-NULL
+
+####2 - Generic functions ----
+
+areaweight_mean<-function(raster1)
+{
+  #produce a raster that has the area of each degree cell
+  a<-cellSize(raster1)
+  a <- mask(a,raster1)
+  #plot(a)
+  #calculate area weighted mean
+  asum<-global(a, "sum", na.rm=TRUE)$sum
+  w<-a/asum
+  #plot(raster1*w)
+  areaw_mean<-global(raster1*w, "sum", na.rm=TRUE)$sum
+  return(list(Area_W_Mean=areaw_mean, Area_W_Sum=areaw_mean*asum))
+}
+
+#plot(raster1)
+
+process_ebvcube<-function(netcdf){
+  prop<-ebv_properties(netcdf)
+  print(prop@general$title)
+  cubes <- ebv_datacubepaths(netcdf)
+  metrics<-unique(cubes$metric_names)
+  scenarios<-unique(cubes$scenario_names)
+  es<-tibble(Scenario=character(), LUCC=character(), Model=character(), Region=character(), Years=character(), Metric=character(),
+             Entity=character(), Units=character(), Sum=numeric(), Mean=numeric(), Median=numeric(), 
+             Area_W_Mean=numeric(), Area_W_Sum=numeric())
+  for (m in metrics)
+    for (s in scenarios) 
+    {
+      index<-which(metrics==m)[1]+(which(scenarios==s)[1]-1)*length(metrics)
+      propcube <- ebv_properties(filepath = netcdf, datacubepath =  cubes$datacubepaths[index])
+      timesteps <- year(propcube@temporal$dates)
+      entities <- unique(propcube@general$entity_names)
+      for (ent in entities)
+        for (t in timesteps)
+        {
+          print(paste(m,s,ent,t))
+          cubestats <- ebv_analyse(filepath = netcdf,
+                                   datacubepath = cubes$datacubepaths[index],
+                                   entity = which(ent==entities),
+                                   timestep = which(t==timesteps))
+          es1<-es[1,]
+          es1$Scenario<-substr(s,1,11)
+          es1$Years<-t
+          es1$LUCC<-substr(s,13,16)
+          pos<-last(str_locate_all(prop@general$title,"BES-SIM ")[[1]])[,1]
+          es1$Model<-str_sub(prop@general$title,pos+8,-2) 
+          es1$Region<-"Global"
+          es1$Entity<-ent
+          es1$Metric<-m
+          es1$Units<-propcube@ebv_cube$units
+          es1$Median<-cubestats$q50
+          es1$Mean<-cubestats$mean
+          raster1 <- ebv_read(filepath = netcdf,
+                              datacubepath = cubes$datacubepaths[index],  
+                              entity = which(ent==entities),
+                              timestep = which(t==timesteps))
+          es1$Sum<-global(raster1, "sum", na.rm=TRUE)$sum
+          stats<-areaweight_mean(raster1)
+          es1$Area_W_Mean <- stats$Area_W_Mean
+          es1$Area_W_Sum <- stats$Area_W_Sum
+          es<-rbind(es,es1) 
+        }
+    }
+  return(es)
+}
+
+calc_delta<-function(df,year0,year1,stats)
+{
+  (df[[stats]][df$Years==year1]-df[[stats]][df$Years==year0])/df[[stats]][df$Years==year0]*100
+}
+
+
+calc_delta_cube<-function(es)
+{
+  es2<-es
+  es2$Units[!grepl('change', es2$Metric) & es2$Units=="%"] <- "% absol"
+  es2$Metric <- str_replace(es2$Metric," \\(.*", "")
+  metrics <- unique(es2$Metric)
+  scenarios <- unique(es2$Scenario)
+  entities <- unique(es2$Entity)
+  y1900 <- setdiff(unique(es$Years),c("2015","2050"))
+  for (m in metrics)
+    for (s in scenarios)
+      for (ent in entities)
+      {
+        print(paste(m,s,ent))
+        absol<-subset(es2, Metric==m & Scenario==s & Entity==ent & Units!="%")
+        index<-which(es2$Metric==m & es2$Scenario==s &  es2$Entity==ent & es2$Units =="%")
+        for (i in index)
+        {
+          if ((!es2$Years[i] %in% c("2015","2050")) | (length(y1900)==0 & (es2$Years[i]=="2015")))
+          {
+            es2$Sum[i] <- 0
+            es2$Area_W_Sum[i] <- 0
+          } else if ((es2$Years[i] =="2015") & (!length(y1900)==0))
+          {
+            es2$Sum[i] <- calc_delta(absol,y1900,"2015","Sum")
+            es2$Area_W_Sum[i] <- calc_delta(absol,y1900,"2015","Area_W_Sum")
+          } else
+          {
+            es2$Sum[i] <- calc_delta(absol,"2015","2050","Sum")
+            es2$Area_W_Sum[i] <- calc_delta(absol,"2015","2050","Area_W_Sum")
+          }
+        }
+      }
+  return(es2)
+}
+```
+
+### Process ebv_cubes
+
+```{r}
+
+for (file in ebvfiles){
+  df1<-process_ebvcube(file)
+  #for ecosystem services % stats are calculated from 
+  #summing the absolute values across cells and calculating
+  #the relative change of those sums, storing the results 
+  #on the Sum and Area_W_Sum fields
+  if (file %in% ebvfiles[7:10])
+    df1<-calc_delta_cube(df1)
+  df<-rbind(df,df1)
+}
+```
+### Create delta_I for GLOBIO
+
+```{r}
+
+df2 <- df
+# netcdf <- file.path(root, "pereira_comcom_id27_20220405_v1.nc")  
+netcdf <- my_path("D",extra_path = "hpereira/ncdf_data","pereira_comcom_id27_20220405_v1.nc")
+prop<-ebv_properties(netcdf)
+cubes <- ebv_datacubepaths(netcdf)
+metrics<-unique(cubes$metric_names)
+scenarios<-unique(cubes$scenario_names)
+
+for (s in scenarios){
+  index<-which(metrics=="Intactness, I")[1]+(which(scenarios==s)[1]-1)*length(metrics)
+  propcube <- ebv_properties(filepath = netcdf, datacubepath =  cubes$datacubepaths[index])
+  timesteps <- year(propcube@temporal$dates)
+  ent <- unique(propcube@general$entity_names)
+  for (t in timesteps[-1]){
+    es1<-df2[1,]
+    es1$Scenario<-substr(s,1,11)
+    es1$Years<-t
+    es1$LUCC<-substr(s,13,16)
+    pos<-last(str_locate_all(prop@general$title,"BES-SIM ")[[1]])[,1]
+    es1$Model<-str_sub(prop@general$title,pos+8,-2)
+    es1$Region<-"Global"
+    es1$Entity<-ent
+    es1$Metric<-"Relatve Change in Intactness, Delta_I"
+    es1$Units<-"Percentage points (%)"
+    es1$Median<-NA
+    es1$Sum<-NA
+    es1$Area_W_Sum<-NA
+    i0 <- ebv_read(filepath = netcdf,
+                   datacubepath = cubes$datacubepaths[index],
+                   entity = 1,
+                   timestep = which(t==timesteps)-1)
+    i1 <- ebv_read(filepath = netcdf,
+                   datacubepath = cubes$datacubepaths[index],
+                   entity = 1,
+                   timestep = which(t==timesteps))
+    delta_i <- (i1-i0)/i0*100
+    es1$Mean <- global(delta_i, "mean", na.rm=TRUE)$mean
+    es1$Area_W_Mean <-areaweight_mean(delta_i)$Area_W_Mean
+    df2<-rbind(df2,es1)
+  }
+}
+
+
+```
+### Calculate I and delta_I for PREDICTS
+
+```{r}
+
+# netcdf <- file.path(root, "pereira_comcom_id28_20231212_v2.nc")  
+netcdf <- my_path("D",extra_path = "hpereira/ncdf_data","pereira_comcom_id28_20220328_v1.nc")
+
+prop<-ebv_properties(netcdf)
+cubes <- ebv_datacubepaths(netcdf)
+metrics<-unique(cubes$metric_names)
+scenarios<-unique(cubes$scenario_names)
+
+for (s in scenarios){
+  index<-which(metrics=="Intactness, I")[1]+(which(scenarios==s)[1]-1)*length(metrics)
+  propcube <- ebv_properties(filepath = netcdf, datacubepath =  cubes$datacubepaths[index])
+  timesteps <- year(propcube@temporal$dates)
+  ent <- unique(propcube@general$entity_names)
+  for (t in timesteps[-1]){
+    es1<-df2[1,]
+    es1$Scenario<-substr(s,1,11)
+    es1$Years<-t
+    es1$LUCC<-substr(s,13,16)
+    pos<-last(str_locate_all(prop@general$title,"BES-SIM ")[[1]])[,1]
+    es1$Model<-str_sub(prop@general$title,pos+8,-2)
+    es1$Region<-"Global"
+    es1$Entity<-ent
+    es1$Metric<-"Relatve Change in Intactness, Delta_I"
+    es1$Units<-"Percentage points (%)"
+    es1$Median<-NA
+    es1$Sum<-NA
+    es1$Area_W_Sum<-NA
+    i0 <- ebv_read(filepath = netcdf,
+                   datacubepath = cubes$datacubepaths[index],
+                   entity = 1,
+                   timestep = which(t==timesteps)-1)
+    i1 <- ebv_read(filepath = netcdf,
+                   datacubepath = cubes$datacubepaths[index],
+                   entity = 1,
+                   timestep = which(t==timesteps))
+    delta_i <- (i1-i0)/i0*100
+    es1$Mean <- global(delta_i, "mean", na.rm=TRUE)$mean
+    es1$Area_W_Mean <-areaweight_mean(delta_i)$Area_W_Mean
+    df2<-rbind(df2,es1)
+  }
+}
+df3 <- df2
+```
+
+
+```{r}
+#### 6 - Write results in file ----
+# clean dataframe
+df3<-subset(df3, Scenario=="SSP1-RCP2.6" | Scenario=="SSP1xRCP2.6" | Scenario=="SSP1xRCP1.5" 
+            | Scenario =="SSP1-RCP1.5" | Years!="2015")
+df3<-subset(df3, Scenario=="SSP1-RCP2.6" | Scenario=="SSP1xRCP2.6" | Scenario=="SSP1xRCP1.5" 
+            | Scenario =="SSP1-RCP1.5" | Years!="1900")
+df4<-df3[!str_detect(df3$Units,"%") | df3$Years!="1900",]
+
+#write csv
+# write.csv(df4,file.path(root_outputs,
+# "process_all.csv"), row.names = FALSE)
+
+```
+
+
+## Re-do Regional analysis
+
+In this part we are going to re-do the regional analysis from Pereira *et al.* (2024) but only for the North America region that we are interested in
+
+### Functions needed
+
+```{r}
+
+areaweight_mean<-function(raster1){
+  #produce a raster that has the area of each degree cell
+  a<-cellSize(raster1)
+  a <- mask(a,raster1)
+  #plot(a)
+  #calculate area weighted mean
+  asum<-global(a, "sum", na.rm=TRUE)$sum
+  w<-a/asum
+  #plot(raster1*w)
+  areaw_mean<-global(raster1*w, "sum", na.rm=TRUE)$sum
+  return(list(Area_W_Mean=areaw_mean, Area_W_Sum=areaw_mean*asum))
+}
+
+calc_delta_lq<-function(df,year0,year1,stats){
+  (df[[stats]][df$Years==year1][[1]]-df[[stats]][df$Years==year0][[1]])/df[[stats]][df$Years==year0][[1]]*100
+}
+
+calc_delta_cube_lq<-function(es){
+  es2<-es
+  es2$Metric <- str_replace(es2$Metric," \\(.*", "")
+  metrics <- unique(es2$Metric)
+  scenarios <- unique(es2$Scenario)
+  y1900 <- setdiff(unique(es2$Years),c("2015","2050"))
+  entities <- unique(es2$Entity)
+  for (m in metrics){
+    if(m %in% es$Metric){
+      #print(m)
+      for (s in scenarios){
+        absol<-subset(es2, Metric==m & Scenario==s & Entity==e & ! str_detect(Units,'%'))
+        index<-which(es2$Metric==m & es2$Scenario==s & es2$Entity==e & str_detect(es2$Units,'%')) #=="Percentage (%)"
+        for (i in index)
+        {
+          if ((!es2$Years[i] %in% c("2015","2050")) | (length(y1900)==0 & (es2$Years[i]=="2015")))
+          {
+            es2$Sum[i] <- 0
+            es2$Area_W_Sum[i] <- 0
+          } else if ((es2$Years[i] =="2015") & (!length(y1900)==0))
+          {
+            es2$Sum[i] <- calc_delta_lq(absol,y1900,"2015","Sum")
+            es2$Area_W_Sum[i] <- calc_delta_lq(absol,y1900,"2015","Area_W_Sum")
+          } else
+          {
+            es2$Sum[i] <- calc_delta_lq(absol,"2015","2050","Sum")
+            es2$Area_W_Sum[i] <- calc_delta_lq(absol,"2015","2050","Area_W_Sum")
+          }
+        }
+      }
+      
+    }else{
+      print(paste0('No change calculated because no absolute values available.'))
+    }
+    
+  }
+  
+  return(es2)
+}
+
+```
+
+
+# Load data
+
+```{r}
+# Load IPBES regions
+# ipbes_vec <- terra::vect(my_path("D","hpereira/IPBES_Regions","IPBES_subregions_simp_v6.shp"))
+
+
+#Load North America regions
+world_land <- rnaturalearth::ne_countries(scale = 'large', returnclass = c("sf")) %>% 
+  filter(admin %in% c("Canada","United States of America","Puerto Rico","Mexico"))
+
+northamerica_vec <- terra::vect(world_land)
+
+
+```
+
+## Calculations
+
+```{r}
+
+### 3 - Calculations ----
+#prepare result data.frame
+cnames <- c('Scenario', 'LUCC', 'Model', 'Entity', 'Region','Years', 'Metric','Units', 'Sum','Mean', 'Median','Area_W_Mean','Area_W_Sum')
+result <- data.frame(matrix(ncol = length(cnames), nrow = 0))
+colnames(result) <- cnames
+
+netcdfs_path <- list.files(my_path("D",extra_path = "hpereira/ncdf_data"),full.names = T)
+
+nc.i = 1
+# loop through netCDFs
+for (nc.i in 1:length(netcdfs_path)){ #
+  nc <- netcdfs_path[nc.i]
+  #get relevant netCDF info 
+  cubes <- ebv_datacubepaths(nc)
+  dates <- ebv_properties(nc)@temporal$dates
+  entities <- ebv_properties(nc)@general$entity_names
+  model <- ebv_properties(nc)@general$title
+  pos<-last(str_locate_all(model,"BES-SIM ")[[1]])
+  model <- str_sub(model,pos+1,-2) 
+  
+  cat('---- processing file ', model, ' (', nc.i, '/', length(netcdfs_path), ')\n', sep = '')
+  
+  #loop through cubes
+  for (c.i in 1:dim(cubes)[1]){
+    c.path <- cubes[c.i, 1]
+    units <- ebv_properties(nc, c.path)@ebv_cube$units
+    cat('-> cube ', c.path, ' (', c.i, '/', dim(cubes)[1], ')\n', sep = '')
+    
+    #loop through entities
+    for(e in entities){
+      
+      #loop through ipbes regions
+      for(region in unique(northamerica_vec$name)){
+        
+        #subset the vector data
+        region.vec <- northamerica_vec[northamerica_vec$name == region,]
+        
+        #build result data.frame
+        part <- data.frame(matrix(ncol = length(cnames), nrow = length(dates)))
+        colnames(part) <- cnames
+        r.i <- 1
+        
+        #loop through dates
+        for(ts.i in 1:length(dates)){
+          
+          #read data
+          data <- ebv_read(
+            filepath = nc,
+            datacubepath = c.path, 
+            entity = e, 
+            timestep = ts.i,
+            verbose = F,
+            ignore_RAM = TRUE
+          )
+          
+          
+          #extract values -> no weights + decide on touches!
+          temp.raster <- terra::rasterize(region.vec, data, touches=T) #touches true to not loose the small pixels (e.g. Oceania)
+          
+          #mask the subset
+          region.raster <- terra::mask(data, temp.raster)
+          
+          #calculate the metrics
+          mean <- terra::global(region.raster, 'mean', na.rm=TRUE)
+          sum <-global(region.raster, "sum", na.rm=TRUE)
+          #median <-global(region.raster, 'median', na.rm=TRUE)
+          median <- median(as.array(region.raster),na.rm=T)
+          stats <-areaweight_mean(region.raster)
+          Area_W_Mean <- stats$Area_W_Mean
+          Area_W_Sum <- stats$Area_W_Sum
+          
+          #create part data.frame
+          part$Scenario[r.i] <-  substr(cubes[c.i, 2],1,12) 
+          part$LUCC[r.i] <- substr(cubes[c.i, 2],13,16)
+          part$Model[r.i] <- model
+          part$Entity[r.i] <- e
+          part$Region[r.i] <- region
+          part$Years[r.i] <- str_sub(as.character(dates[ts.i]), 1,4)
+          part$Metric[r.i] <- cubes[c.i, 3]
+          part$Units[r.i] <- units
+          part$Sum[r.i] <- sum
+          part$Mean[r.i] <- mean
+          part$Median[r.i] <- median
+          part$Area_W_Mean[r.i] <- Area_W_Mean
+          part$Area_W_Sum[r.i] <- Area_W_Sum
+          
+          r.i <- r.i +1
+          
+        }
+        
+        
+        #add data to result data.frame
+        result <- rbind(result, part)
+      }
+    }
+    
+  }
+  
+}
+
+## Save result
+clean_result <- result %>% janitor::clean_names() %>% dplyr::rename(name = region)
+write_csv(clean_result,
+          my_path("D","hpereira/","ncba_pereira.csv"))
+
+```
+
+
+## Map of calculations
+
+```{r}
+
+```
+
+
+
+
+## Figure 1 
+Create input data and plots for global biodiversity metrics
+Project BES SIM 1
+Created April 2019, Isabel Rosa & Ines S. Martins
+Revised Nov 2023, Henrique Pereira
+Revised Dec 2023, Henrique Pereira
+Revised Feb 2024, Henrique Pereira
+
+#### Functions needed
+
+```{r}
+
+#Summary function
+summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=TRUE,
+                      conf.interval=.95, .drop=TRUE) {
+  
+  # New version of length which can handle NA's: if na.rm==T, don't count them
+  length2 <- function (x, na.rm=FALSE) {
+    if (na.rm) sum(!is.na(x))
+    else       length(x)
+  }
+  
+  # This does the summary. For each group's data frame, return a vector with
+  # N, mean, and sd
+  datac <- ddply(data, groupvars, .drop=.drop,
+                 .fun = function(xx, col) {
+                   c(N    = length2(xx[[col]], na.rm=na.rm),
+                     mean = mean   (xx[[col]], na.rm=na.rm),
+                     sd   = sd     (xx[[col]], na.rm=na.rm)
+                   )
+                 },
+                 measurevar
+  )
+  
+  # Rename the "mean" column    
+  print(data)
+  print(datac)
+  #datac <- rename(datac, !!measurevar := mean)
+  datac <- plyr::rename(datac, c("mean" = measurevar))
+  
+  datac$se <- datac$sd / sqrt(datac$N)  # Calculate standard error of the mean
+  
+  # Confidence interval multiplier for standard error
+  # Calculate t-statistic for confidence interval: 
+  # e.g., if conf.interval is .95, use .975 (above/below), and use df=N-1
+  ciMult <- qt(conf.interval/2 + .5, datac$N-1)
+  datac$ci <- datac$se * ciMult
+  
+  return(datac)
+}
+
+# auxiliary function to save plots
+savePlot <- function(myPlot, X) {
+  pdf(X, width = 11.69, height = 8.27)
+  print(myPlot)
+  dev.off()
+}
+
+# function to calculate geometric change per time
+
+geomchange<-function(deltay,deltatime)
+{
+  ((1+deltay/100)^(1/deltatime)-1)*100
+}
+
+#b<-c("#56B4E9","#009E73","#D55E00","#FCBF10")
+#b<-c("#56B4E9","#D55E00","#009E73","#FCBF10")
+b<-rev(c("#F2C45F", "#B5520F","#00681C","#56B4E9"))
+
+```
+
+### Load Data
+
+```{r}
+
+### 2 - Import data ----
+# data_all <- my_path("D","hpereira/data_tables","Biodiversity_global.csv", read = T)
+data_all <- my_path("D","hpereira/","ncba_pereira.csv", read = T)
+
+#Use only units in %
+data2<-subset(data_all,units %in% c("%"))
+
+#rename scenarios
+data2$scenario<-str_replace_all(data2$scenario,
+                                c("SSP1xRCP2.6"="Global sustainability",
+                                  "SSP3xRCP6.0"="Regional rivalry",
+                                  "SSP5xRCP8.5"="Fossil fuel developm."))
+
+```
+
+### Calculations
+
+```{r}
+
+# normalize to decadal change ranges
+data2$decadalValue<-data2$value
+data2$decadalValue[data2$scenario=="Historical"]<-
+  geomchange(data2$value[data2$scenario=="Historical"],11.5)
+#  data2$Value[data2$Scenario=="Historical"]/115
+data2$decadalvalue[data2$scenario!="Historical"]<-
+  geomchange(data2$value[data2$scenario!="Historical"],3.5)
+#  LU_data$Value[LU_data$Scenario!="Historical"]/35
+
+# select the non-diversity weighted metrics
+# data2 <- subset(data2,family!="SSalpha")
+# select Years
+data2<-subset(data2, years %in% c("1900-2014","1900-2015","2015-2050"))
+# add the LUCC historical data point to Insights by using the LU value
+#newrow<-subset(data2,Model=="INSIGHTS"&Scenario=="Historical")
+#newrow$LUCC<-"LUCC"
+#data2<-rbind(data2,newrow)
+
+# data for Figure S7 for plotting different taxa
+data3 <-  subset(data2, (Model=="AIM" & (Family=="Hgamma" | Family=="Salpha") & 
+                           Years %in% c("1900-2015","2015-2050")) |
+                   (Model=="cSAR-IIASA" & Family=="Salpha" & Years %in% c("1900-2015","2015-2050")))
+
+# Select only "All taxa" and only relevant models
+data2 <- subset(data2, (Model=="AIM" & Taxa=="All") |
+                  (Model=="cSAR-iDiv" & Taxa=="Birds") |
+                  (Model=="cSAR-IIASA" & Taxa=="All") |
+                  (Model=="BILBI" & Taxa=="Plants") |
+                  (Model %in% c("INSIGHTS","PREDICTS","GLOBIO")))
+unique(cbind(data2$Model, data2$Taxa))
+
+# remove cSAR-IIASA gamma 
+#data2 <- subset(data2, (Model!="cSAR-IIASA" | Family!="Sgamma")) 
+
+# select only NoDispersal (only relevant for AIM)
+data2<-subset(data2, !str_detect(data2$Metric,"full dispersal"))
+
+
+# summarize across models for each metric
+tgc <- summarySE(data2, measurevar="DecadalValue", groupvars=c("Scenario","Family","LUCC"))
+```
+
+### Plot figure 1
+
+```{r}
+
+#reorder factor levels
+LU_data<-data2
+LU_data$Family<-as.factor(LU_data$Family)
+levels(LU_data$Family)
+LU_data$Family <-factor(LU_data$Family,levels(LU_data$Family)[c(2,1,3,4)]) 
+levels(LU_data$Family)
+
+tgc$Family<-as.factor(tgc$Family)
+tgc$Family<-factor(tgc$Family,levels(tgc$Family)[c(2,1,3,4)]) 
+# write.csv(tgc,file.path(root_outputs,"Figure1_intermodel.csv"))
+
+# tgc$LUCC[tgc$LUCC=="LU"]<-"Land Use"
+# tgc$LUCC[tgc$LUCC=="LUCC"]<-"Land Use and Climate Change"
+
+
+tgc$Scenario <- factor(tgc$Scenario, levels = c("Fossil fuel developm.","Regional rivalry",
+                                                "Global sustainability","Historical"))
+#tgc$Scenario <- factor(tgc$Scenario, levels = c("SSP5xRCP8.5","SSP3xRCP6.0","SSP1xRCP2.6","Historical"))
+
+LU_data$Scenario <- factor(LU_data$Scenario, levels = c("Fossil fuel developm.","Regional rivalry",
+                                                        "Global sustainability","Historical"))
+#LU_data$Scenario <- factor(LU_data$Scenario, levels = c("SSP5xRCP8.5","SSP3xRCP6.0","SSP1xRCP2.6","Historical"))
+
+plot_global<-ggplot(tgc, aes(y=DecadalValue, x=Family, group = Scenario)) +
+  geom_col(aes(fill = Scenario),position = "dodge") +
+  scale_shape_manual(values = 0:6) +
+  geom_point(data=LU_data,aes(y=DecadalValue,shape=Model, x=Family, group = Scenario),position=position_dodge(0.9)) +
+  #geom_text(aes(label = N, y = 0.1), color = "black", position = position_dodge(0.9),vjust = 0)+
+  scale_fill_manual(values = b)+
+  #geom_errorbar(aes(ymin=DecadalValue-se, ymax=DecadalValue+se), width=.2, position=position_dodge(0.9))+
+  scale_colour_manual(values = b)+
+  coord_flip()+ 
+  scale_y_continuous(name= "Relative change per decade (%)") +
+  scale_x_discrete(name= "Biodiversity metrics", 
+                   labels=c(expression(""*Delta*"I"[alpha]*""),expression(""*Delta*"H"[gamma]*""),expression(""*Delta*"S"[alpha]*""),expression(""*Delta*"S"[gamma]*""))) +
+  # scale_x_discrete(name= "Intermodel biodiversity metrics", 
+  #                  labels=c(expression(paste("Biodiversity Intactness (I"[alpha],")")),expression(paste("Global mean Habitat extent (H"[gamma],")"),expression(paste("Local mean Habitat extent (H"[alpha],")"),expression("S"[alpha]))) +
+  theme(axis.text=element_text(size=12), axis.title.y=element_text(size=12), axis.title.x=element_text(size=12))+
+  facet_wrap(~LUCC)+
+  theme_bw()+
+  theme(#panel.border = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    legend.position =  c(0.1, 0.6),
+    strip.background = element_blank(),
+    strip.text.y = element_text(size = 12, colour = "black"),
+    strip.text.x = element_blank(),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12))
+
+plot_global +
+  guides(fill = guide_legend(reverse = TRUE))
+
+```
+
+## Figure 2
+
+```{r}
+
+root <- my_path("D","hpereira/ncdf_global_data")
+
+```
+
+
+```{r}
+
+#download data
+globio_path <- ebv_download('10.25829/r7bt92', root)
+predicts_path <- ebv_download('10.25829/vt7qk9', root)
+iiasa_path <- ebv_download('10.25829/haq7d4', root)
+csar_path <- ebv_download('10.25829/5zmy41', root)
+aim_path <- ebv_download('10.25829/5wn357', root)
+insight_path <- ebv_download('10.25829/h2evr2', root)
+
+```
+
+```{r}
+# ebv_datacubepaths(predicts_path)
+predicts_hist <- ebv_read(filepath = predicts_path,
+                          datacubepath = 'scenario_1/metric_3/ebv_cube',
+                          timestep = 2,
+                          entity = 1, type='r')
+predicts_2050_ssp1_lu <- ebv_read(filepath = predicts_path,
+                                  datacubepath = 'scenario_1/metric_3/ebv_cube',
+                                  timestep = 3,
+                                  entity = 1, type='r')
+predicts_2050_ssp2_lu <- ebv_read(filepath = predicts_path,
+                                  datacubepath = 'scenario_2/metric_3/ebv_cube',
+                                  timestep = 3,
+                                  entity = 1, type='r')
+
+predicts_2050_ssp3_lu <- ebv_read(filepath = predicts_path,
+                                  datacubepath = 'scenario_3/metric_3/ebv_cube',
+                                  timestep = 3,
+                                  entity = 1, type='r')
+
+
+# ebv_datacubepaths(iiasa_path)
+iiasa_hist <- ebv_read(filepath = iiasa_path,
+                       datacubepath = 'scenario_1/metric_3/ebv_cube',
+                       timestep = 2,
+                       entity = 1, type='r')
+iiasa_2050_ssp1_lu <- ebv_read(filepath = iiasa_path,
+                               datacubepath = 'scenario_1/metric_3/ebv_cube',
+                               timestep = 3,
+                               entity = 1, type='r')
+iiasa_2050_ssp2_lu <- ebv_read(filepath = iiasa_path,
+                               datacubepath = 'scenario_2/metric_3/ebv_cube',
+                               timestep = 3,
+                               entity = 1, type='r')
+iiasa_2050_ssp3_lu <- ebv_read(filepath = iiasa_path,
+                               datacubepath = 'scenario_3/metric_3/ebv_cube',
+                               timestep = 3,
+                               entity = 1, type='r')
+
+# ebv_datacubepaths(csar_path)
+csar_hist <- ebv_read(filepath = csar_path,
+                      datacubepath = 'scenario_1/metric_3/ebv_cube',
+                      timestep = 2,
+                      entity = 1, type='r')
+csar_2050_ssp1_lu <- ebv_read(filepath = csar_path,
+                              datacubepath = 'scenario_1/metric_3/ebv_cube',
+                              timestep = 3,
+                              entity = 1, type='r')
+csar_2050_ssp2_lu <- ebv_read(filepath = csar_path,
+                              datacubepath = 'scenario_2/metric_3/ebv_cube',
+                              timestep = 3,
+                              entity = 1, type='r')
+csar_2050_ssp3_lu <- ebv_read(filepath = csar_path,
+                              datacubepath = 'scenario_3/metric_3/ebv_cube',
+                              timestep = 3,
+                              entity = 1, type='r')
+# ebv_datacubepaths(aim_path)
+aim_hist <- ebv_read(filepath = aim_path,
+                     datacubepath = 'scenario_1/metric_3/ebv_cube',
+                     timestep = 2,
+                     entity = 2, type='r')
+aim_2050_ssp1_lu <- ebv_read(filepath = aim_path,
+                             datacubepath = 'scenario_1/metric_3/ebv_cube',
+                             timestep = 3,
+                             entity = 2, type='r')
+aim_2050_ssp2_lu <- ebv_read(filepath = aim_path,
+                             datacubepath = 'scenario_2/metric_3/ebv_cube',
+                             timestep = 3,
+                             entity = 2, type='r')
+aim_2050_ssp3_lu <- ebv_read(filepath = aim_path,
+                             datacubepath = 'scenario_3/metric_3/ebv_cube',
+                             timestep = 3,
+                             entity = 2, type='r')
+aim_2050_ssp1_lucc <- ebv_read(filepath = aim_path,
+                               datacubepath = 'scenario_4/metric_3/ebv_cube',
+                               timestep = 3,
+                               entity = 2, type='r')
+aim_2050_ssp2_lucc <- ebv_read(filepath = aim_path,
+                               datacubepath = 'scenario_5/metric_3/ebv_cube',
+                               timestep = 3,
+                               entity = 2, type='r')
+aim_2050_ssp3_lucc <- ebv_read(filepath = aim_path,
+                               datacubepath = 'scenario_6/metric_3/ebv_cube',
+                               timestep = 3,
+                               entity = 2, type='r')
+
+# ebv_datacubepaths(insight_path)
+insight_hist <- ebv_read(filepath = insight_path,
+                         datacubepath = 'scenario_1/metric_3/ebv_cube',
+                         timestep = 2,
+                         entity = 1, type='r')
+insight_2050_ssp1_lu <- ebv_read(filepath = insight_path,
+                                 datacubepath = 'scenario_1/metric_3/ebv_cube',
+                                 timestep = 3,
+                                 entity = 1, type='r')
+insight_2050_ssp2_lu <- ebv_read(filepath = insight_path,
+                                 datacubepath = 'scenario_2/metric_3/ebv_cube',
+                                 timestep = 3,
+                                 entity = 1, type='r')
+insight_2050_ssp3_lu <- ebv_read(filepath = insight_path,
+                                 datacubepath = 'scenario_3/metric_3/ebv_cube',
+                                 timestep = 3,
+                                 entity = 1, type='r')
+insight_2050_ssp1_lucc <- ebv_read(filepath = insight_path,
+                                   datacubepath = 'scenario_4/metric_3/ebv_cube',
+                                   timestep = 3,
+                                   entity = 1, type='r')
+insight_2050_ssp2_lucc <- ebv_read(filepath = insight_path,
+                                   datacubepath = 'scenario_5/metric_3/ebv_cube',
+                                   timestep = 3,
+                                   entity = 1, type='r')
+insight_2050_ssp3_lucc <- ebv_read(filepath = insight_path,
+                                   datacubepath = 'scenario_6/metric_3/ebv_cube',
+                                   timestep = 3,
+                                   entity = 1, type='r')
+
+#extend aim results
+aim_hist <- terra::extend(aim_hist,predicts_hist)
+aim_2050_ssp1_lu <- terra::extend(aim_2050_ssp1_lu,predicts_hist)
+aim_2050_ssp2_lu <- terra::extend(aim_2050_ssp2_lu,predicts_hist)
+aim_2050_ssp3_lu <- terra::extend(aim_2050_ssp3_lu,predicts_hist)
+aim_2050_ssp1_lucc <- terra::extend(aim_2050_ssp1_lucc,predicts_hist)
+aim_2050_ssp2_lucc <- terra::extend(aim_2050_ssp2_lucc,predicts_hist)
+aim_2050_ssp3_lucc <- terra::extend(aim_2050_ssp3_lucc,predicts_hist)
+
+```
+
+
+###Calculations 
+
+```{r}
+
+#historical
+#stack the rasters
+hist_stack <- c(predicts_hist, iiasa_hist, insight_hist, aim_hist, csar_hist) #
+#calculate mean
+hist_mean <- app(hist_stack, mean, na.rm=T)
+
+#ssp1 lu
+#stack the rasters
+ssp1_lu_stack <- c(predicts_2050_ssp1_lu, aim_2050_ssp1_lu, 
+                   iiasa_2050_ssp1_lu, csar_2050_ssp1_lu,
+                   insight_2050_ssp1_lu)
+#calculate mean
+ssp1_lu_mean <- app(ssp1_lu_stack, mean, na.rm=T)
+
+
+#ssp2 lu
+#stack the rasters
+ssp2_lu_stack <- c(predicts_2050_ssp2_lu, aim_2050_ssp2_lu, 
+                   iiasa_2050_ssp2_lu, csar_2050_ssp2_lu,
+                   insight_2050_ssp2_lu)
+#calculate mean
+ssp2_lu_mean <- app(ssp2_lu_stack, mean, na.rm=T)
+
+#ssp3 lu
+#stack the rasters
+ssp3_lu_stack <- c(predicts_2050_ssp3_lu, aim_2050_ssp3_lu, 
+                   iiasa_2050_ssp3_lu, csar_2050_ssp3_lu,
+                   insight_2050_ssp3_lu)
+#calculate mean
+ssp3_lu_mean <- app(ssp3_lu_stack, mean, na.rm=T)
+
+
+#ssp1 lucc
+#stack the rasters
+ssp1_lucc_stack <- c(aim_2050_ssp1_lucc, insight_2050_ssp1_lucc)
+#calculate mean
+ssp1_lucc_mean <- app(ssp1_lucc_stack, mean, na.rm=T)
+
+
+#ssp2 lucc
+#stack the rasters
+ssp2_lucc_stack <- c(aim_2050_ssp2_lucc, insight_2050_ssp2_lucc)
+#calculate mean
+ssp2_lucc_mean <- app(ssp2_lucc_stack, mean, na.rm=T)
+
+#ssp3 lucc
+#stack the rasters
+ssp3_lucc_stack <- c(aim_2050_ssp3_lucc, insight_2050_ssp3_lucc)
+#calculate mean
+ssp3_lucc_mean <- app(ssp3_lucc_stack, mean, na.rm=T)
+```
+
+### Plot me
+
+```{r}
+
+#calculate mean per decade
+hist_mean_yrl <- (((1+(hist_mean/100))^(1/11.5))-1)*100
+ssp1_lu_mean_yrl <-(((1+(ssp1_lu_mean/100))^(1/3.5))-1)*100
+ssp2_lu_mean_yrl <- (((1+(ssp2_lu_mean/100))^(1/3.5))-1)*100
+ssp3_lu_mean_yrl <- (((1+(ssp3_lu_mean/100))^(1/3.5))-1)*100
+ssp1_lucc_mean_yrl <-(((1+(ssp1_lucc_mean/100))^(1/3.5))-1)*100
+ssp2_lucc_mean_yrl <-(((1+(ssp2_lucc_mean/100))^(1/3.5))-1)*100
+ssp3_lucc_mean_yrl <-(((1+(ssp3_lucc_mean/100))^(1/3.5))-1)*100
+
+# Re scale crop and transform to sf for plotting
+re_scale_lu <- function(x){
+  output <- x %>% 
+    mutate(mean = ifelse(mean < -0.02,-1.02,
+                         ifelse(mean > 1.08,1.08, mean))) %>% 
+    filter(y >= 10,
+           x >= -180 & x<= -50) %>%
+    st_as_sf(coords = c("x", "y"), crs = 4326) %>% 
+    st_intersection(world_land) %>% 
+    st_shift_longitude()
+}
+
+re_scale_luc <- function(x){
+  output <- x %>% 
+    mutate(mean = ifelse(mean < -7.38,-8,
+                         ifelse(mean > 0.61,0.6, mean))) %>% 
+    filter(y >= 10,
+           x >= -180 & x<= -50) %>%
+    st_as_sf(coords = c("x", "y"), crs = 4326) %>% 
+    st_intersection(world_land) %>% 
+    st_shift_longitude()
+}
+
+# Re scale figures
+hist_mean_yrl_sf <- as.data.frame(terra::as.data.frame(hist_mean_yrl, xy = TRUE, na.rm = TRUE)) %>% 
+  re_scale_lu()
+ssp1_lu_mean_yrl_sf <- as.data.frame(terra::as.data.frame(ssp1_lu_mean_yrl, xy = TRUE, na.rm = TRUE)) %>% 
+  re_scale_lu()
+ssp2_lu_mean_yrl_sf <- as.data.frame(terra::as.data.frame(ssp2_lu_mean_yrl, xy = TRUE, na.rm = TRUE)) %>% 
+  re_scale_lu()
+ssp3_lu_mean_yrl_sf <- as.data.frame(terra::as.data.frame(ssp3_lu_mean_yrl, xy = TRUE, na.rm = TRUE)) %>% 
+  re_scale_lu()
+ssp1_lucc_mean_yrl_sf <- as.data.frame(terra::as.data.frame(ssp1_lucc_mean, xy = TRUE, na.rm = TRUE)) %>% 
+  re_scale_luc()
+ssp2_lucc_mean_yrl_sf <- as.data.frame(terra::as.data.frame(ssp2_lucc_mean, xy = TRUE, na.rm = TRUE)) %>% 
+  re_scale_luc()
+ssp3_lucc_mean_yrl_sf <- as.data.frame(terra::as.data.frame(ssp3_lucc_mean, xy = TRUE, na.rm = TRUE)) %>% 
+  re_scale_luc()
+
+
+
+
+ggplot_me <- function(x,leg = F){
+  
+  plot_out <- ggplot(x) +
+    geom_sf(data = x, aes(color = mean), size = 0.9) +
+    geom_sf(data = world_land %>% st_shift_longitude(), aes(), fill ="transparent") +
+    scale_color_viridis_b("% spp. decade (ABCD)\n% spp. decade (EFG)",
+                              labels = c("-1.02\n-8", "-0.75\n-6", "-50\n-4","-25\n-2","1.08\n0.6")  # Custom labels
+                          
+    ) +
+    my_ggtheme_p(ax_tx_s = 8,ax_tl_s = 10,leg_tl_s = 10,leg_tx_s = 8,facet_tx_s = 10,leg_pos = "") +
+    theme(plot.margin = unit(c(.05, 0, .05, 0), units = 'cm'),
+          legend.background = element_blank(),
+          legend.key.width = unit(.25, 'cm'),
+          legend.title = element_text(vjust = 0.1),
+          axis.text.x = element_blank(),
+          axis.text.y = element_blank(),
+          # legend.title = element_blank(),
+          legend.box.margin=margin(20,20,20,20)
+    ) +
+    scale_x_continuous(expand = c(0, 0)) +
+    scale_y_continuous(expand = c(0, 0)) +
+    my_ggtheme_m(leg_width = 3,leg_pos = "")
+  
+  if(leg == T){
+    plot_out <- plot_out +
+      theme(legend.position = ""
+      )+
+      my_ggtheme_m(leg_width = 3) 
+    
+    
+  }
+  
+  
+  return(plot_out)
+}
+
+
+# Plot each one
+hist_mean_yrl_map <- ggplot_me(hist_mean_yrl_sf) + ggtitle("A - Historical") 
+ssp1_lu_mean_yrl_map <-  ggplot_me(ssp1_lu_mean_yrl_sf) + ggtitle("B - Global sustainability (LU)") 
+ssp2_lu_mean_yrl_map <- ggplot_me(ssp2_lu_mean_yrl_sf) + ggtitle("C - Regional rivalry (LU)")
+ssp3_lu_mean_yrl_map <-  ggplot_me(ssp3_lu_mean_yrl_sf) + ggtitle("D - Fossil−fueled development (LU)")
+ssp1_lucc_mean_yrl_map <- ggplot_me(ssp1_lucc_mean_yrl_sf) + ggtitle("E - Global sustainability (LUCC)")
+ssp2_lucc_mean_yrl_map <- ggplot_me(ssp2_lucc_mean_yrl_sf) + ggtitle("F - Regional rivalry (LUCC)")
+ssp3_lucc_mean_yrl_map <- ggplot_me(ssp3_lucc_mean_yrl_sf) + ggtitle("G - Fossil−fueled development (LUCC)")
+
+# Dummy plot
+x <- ggplot() + geom_line() + my_ggtheme_m()
+
+combined_plot <- ggarrange(x,
+                           hist_mean_yrl_map,
+                           x,
+                           ssp1_lu_mean_yrl_map,
+                           ssp2_lu_mean_yrl_map,
+                           ssp3_lu_mean_yrl_map,
+                           ssp1_lucc_mean_yrl_map,
+                           ssp2_lucc_mean_yrl_map,
+                           ssp3_lucc_mean_yrl_map,
+                           common.legend = T,
+                           legend = "bottom"
+)
+
+ggsave("combined_plot.jpg", plot = combined_plot, width = 10, height = 10)
+
+```
+
+
+## Figure 4 
+Create Input data and Map with regional plots for ES and BD
+Project BES SIM 1
+Created April 2019, Ines S. Martins
+Revised Nov 2023, Henrique Pereira
+Revised Feb 20224, Henrique Pereira
+
+## Functions needed
+
+```{r}
+
+#Summary function
+summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=TRUE,
+                      conf.interval=.95, .drop=TRUE) {
+  
+  # New version of length which can handle NA's: if na.rm==T, don't count them
+  length2 <- function (x, na.rm=FALSE) {
+    if (na.rm) sum(!is.na(x))
+    else       length(x)
+  }
+  
+  # This does the summary. For each group's data frame, return a vector with
+  # N, mean, and sd
+  datac <- ddply(data, groupvars, .drop=.drop,
+                 .fun = function(xx, col) {
+                   c(N    = length2(xx[[col]], na.rm=na.rm),
+                     mean = mean   (xx[[col]], na.rm=na.rm),
+                     sd   = sd     (xx[[col]], na.rm=na.rm)
+                   )
+                 },
+                 measurevar
+  )
+  
+  # Rename the "mean" column    
+  # datac <- rename(datac, !!measurevar := mean)
+  datac <-  plyr::rename(datac, c("mean" = measurevar))
+  
+  datac$se <- datac$sd / sqrt(datac$N)  # Calculate standard error of the mean
+  
+  # Confidence interval multiplier for standard error
+  # Calculate t-statistic for confidence interval: 
+  # e.g., if conf.interval is .95, use .975 (above/below), and use df=N-1
+  ciMult <- qt(conf.interval/2 + .5, datac$N-1)
+  datac$ci <- datac$se * ciMult
+  
+  return(datac)
+}
+
+```
+
+## Load Data
+
+```{r}
+
+
+all_data_global<-my_path("D","hpereira/data_tables", name = "EcosystemServices_global.csv", read = T)
+
+
+all_data<-rbind(all_data,all_data_global)
+all_data <- dplyr::rename(all_data, sum = value)
+
+all_data_bio <- my_path("D","hpereira/data_tables", name ="Biodiversity_regional.csv", read = T)
+
+all_data_bio_global <- read.csv(file.path(root_tables,"Biodiversity_global.csv"))
+all_data_bio_global <- all_data_bio_global[,1:11]  #last column of bio_global is not needed
+all_data_bio_global <- subset(all_data_bio_global,LUCC=="LUCC")
+all_data_bio <- rbind(all_data_bio [, 1:11], all_data_bio_global)
+all_data_bio <- dplyr::rename(all_data_bio, Sum = Value)
+all_data_bio <- dplyr::rename(all_data_bio, NCP = Family)
+```
+
