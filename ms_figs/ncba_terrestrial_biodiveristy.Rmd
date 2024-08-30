@@ -1041,7 +1041,7 @@ ggplot_me <- function(x,leg = F){
     geom_sf(data = x, aes(color = mean), size = 0.9) +
     geom_sf(data = world_land %>% st_shift_longitude(), aes(), fill ="transparent") +
     scale_color_viridis_b("% spp. decade (ABCD)\n% spp. decade (EFG)",
-                              labels = c("-1.02\n-8", "-0.75\n-6", "-50\n-4","-25\n-2","1.08\n0.6")  # Custom labels
+                              labels = c("< -1.02\n< -8", "-0.75\n-6", "-0.50\n-4","-0.25\n-2","> 1.08\n> 0.6")  # Custom labels
                           
     ) +
     my_ggtheme_p(ax_tx_s = 8,ax_tl_s = 10,leg_tl_s = 10,leg_tx_s = 8,facet_tx_s = 10,leg_pos = "") +
@@ -1097,7 +1097,7 @@ combined_plot <- ggarrange(x,
                            legend = "bottom"
 )
 
-ggsave("combined_plot.jpg", plot = combined_plot, width = 10, height = 10)
+ggsave("ncba_land_delta_spp_richness.jpg", plot = combined_plot, width = 10, height = 10)
 
 ```
 
