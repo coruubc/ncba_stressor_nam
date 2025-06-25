@@ -1,18 +1,25 @@
 ---
 title: "Methods and figure legend"
-author: "Juliano Palacios-Abrantes"
-date: "`r Sys.Date()`"
+author: "Juliano Palacios-Abrantes and William W.L. Cheung"
+date: "07-23-204"
 output: pdf_document
+bibliography: references.bib
 ---
 
 # Methods
 
-The figures here presented are based on the work conducted by O'Hara *et al* 2021. In brief, O'Hara *et al* estimated the cumulative human impacts on at-risk marine species globally, including changes in those impacts from 2003 and 2013, when the last assessment was done. Moreover, assessed the sensitivity of the species to 14 anthropogenic stressors by combining species range maps and stressors activities in ocean and land. Their assesment covered 1,271 species mapped for the International Union for Conservation of Nature (IUCN) Red List of Threatened Species. 
+For the Biodiversity and Climate Change Assessment analysis we replicate preiouslly published global efforts with a regional focus on North America, specifically within the Exclusive Economic Zones (EEZs) of Canada (Atlantic, Arctic and Pacific), Mexico (Atlantic and Pacific), and the United States of America (USA) including Hawaii, Puerto Rico and Virgin Islands. Therefore, we only present results for species that are found in these EEZs. The analysis uses data from three different global papers croped to North America [@OHara.2021; @Halpern.2019; @Pereira.2024]. The code for this analysis can be found on [Github](https://github.com/coruubc/ncba_stressor_nam).
 
-Here, we replicate O'Hara *et al* (2021) efforts focusing on North America, specifically within the Exclusive Economic Zones (EEZs) of Canada (Atlantic, Arctic and Pacific), Mexico (Atlantic and Pacific), and the United States of America (USA) including Hawaii, Puerto Rico and Virgin Islands. Therefore, we only present results for species that are found in these EEZs. See O'Hara *et al* (2021) for extended methodological details. All code and resulting (croped) data can be found in https://github.com/coruubc/ncba_stressor_nam
+To examine cumulative human impacts, we used data from Halpern *et al.* (2019), which forms part of the Ocean Health Index. These data  were downloaded from the [KNB repository](https://knb.ecoinformatics.org/view/doi:10.5063/F12B8WBS) and the associated code is available via [OHI repository](https://github.com/OHI-Science/impact_acceleration). 
 
-# Legends
+Additionally, we used data from O'Hara *et al.* (2021) available on the [Github repository](https://github.com/coruubc/ncba_stressor_nam), who estimated the cumulative human impacts on at-risk marine species globally. Their analysis included changes in these impacts between 2003 and 2013. They assessed the sensitivity of 1,271 marine species listed on the IUCN Red List of Threatened Species to 14 anthropogenic stressors by integrating species range maps with spatial layers of ocean- and land-based human activities. 
 
-*Stressors figure (bar plot).* Number of stressors and stressor categories (fishing, ocean, land-based, and climate) affecting at-risk species located in Canada, Mexico, and the United States of America (USA) including Puerto Rico, Virgin Islands, and Hawaii. (A) By-country counts of species classified as sensitive to each anthropogenic stressor or category according to O'Hara *et al* 2021; category totals count species sensitive to one or more stressors in the category. (B) Counts of species in all selected countries by number of stressor categories (left) or stressors (right) to which each is sensitive.
+Finally, for the terrestrial analisis we rely on the study by Pereira *et al.* (2024), which examined historical and future trends in biodiversity and ecosystem services from 1900 to 2050. Their work used a model intercomparison approach to assess land-use and climate change impacts on biodiversity. We replicate their analysis using the publicly available code from [Zenodo](https://doi.org/10.5281/zenodo.10703117).
 
-*Impact and intensity figure (map).* Proportion of species affected and with intensifying impacts within the Exclusive Economic Zones of Canada, Mexico, and the United States of America (USA) including Puerto Rico, Virgin Islands, and Hawaii. (A) Number of threatened species affected by one or more stressors in 2013, according to O'Hara *et al* 2021; gray indicates noaffected species. (B) Proportion of threatened species relative to at-risk species richness affected by one or more stressors. (C) Net proportion of affected at-risk species in which stressors intensified at arate $\geq 0.1 %$ per year over the period 2003 to 2013 according to O'Hara *et al* 2021.
+# References
+ 
+<!-- # Legends -->
+
+<!-- *Stressors figure (bar plot).* Number of stressors and stressor categories (fishing, ocean, land-based, and climate) affecting at-risk species located in Canada, Mexico, and the United States of America (USA) including Puerto Rico, Virgin Islands, and Hawaii. (A) By-country counts of species classified as sensitive to each anthropogenic stressor or category according to O'Hara *et al* 2021; category totals count species sensitive to one or more stressors in the category. (B) Counts of species in all selected countries by number of stressor categories (left) or stressors (right) to which each is sensitive. -->
+
+<!-- *Impact and intensity figure (map).* Proportion of species affected and with intensifying impacts within the Exclusive Economic Zones of Canada, Mexico, and the United States of America (USA) including Puerto Rico, Virgin Islands, and Hawaii. (A) Number of threatened species affected by one or more stressors in 2013, according to O'Hara *et al* 2021; gray indicates noaffected species. (B) Proportion of threatened species relative to at-risk species richness affected by one or more stressors. (C) Net proportion of affected at-risk species in which stressors intensified at arate $\geq 0.1 %$ per year over the period 2003 to 2013 according to O'Hara *et al* 2021. -->
