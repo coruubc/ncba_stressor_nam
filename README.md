@@ -1,18 +1,18 @@
----
-editor_options: 
-  markdown: 
-    wrap: 72
----
 
 # ncba_stressor
 
-Code for generating the the National Climate-Biodiversity Assessment
-multi-stressor map
+Code for generating the the National Climate-Biodiversity Assessment multi-stressor map
 
 # Obejctive
 
 Our chapter aims to assess the interaction between climate and other
 non-climatic stressors on biodiversity.
+
+# Authors
+Juliano Palacios Abrantes, j.palacios[at]oceans.ubc.ca
+William W. L. Cheung
+
+Institute for the Oceans and Fisheries, The University of British Columbia, Vancouver, Canada
 
 # Instructions
 
@@ -123,17 +123,25 @@ Code for analysis is here [Zenodo doce](https://zenodo.org/records/10973423) and
 
 # References
 
-Casey C. O'Hara et al. ,At-risk marine biodiversity faces extensive,
-expanding, and intensifying human
-impacts.Science372,84-87(2021).DOI:10.1126/science.abe6731
+- Halpern, Benjamin S, Melanie Frazier, Jamie Afflerbach, Julia S Lowndes, Fiorenza Micheli, Casey Oamp
+x02019 Hara, Courtney Scarborough, and Kimberly A Selkoe. 2019. “Recent pace of change in human
+impact on the world’s ocean.” Scientific Reports, August, 1–8. https://doi.org/10.1038/s41598-019-
+47201-9.
+- O’Hara, Casey C., Melanie Frazier, and Benjamin S. Halpern. 2021. “At-risk marine biodiversity faces
+extensive, expanding, and intensifying human impacts.” Science 372 (6537): 84–87. https://doi.org/10.
+1126/science.abe6731.
+- Pereira, Henrique M., Inês S. Martins, Isabel M. D. Rosa, HyeJin Kim, Paul Leadley, Alexander Popp,
+Detlef P. van Vuuren, et al. 2024. “Global trends and scenarios for terrestrial biodiversity and ecosystem
+services from 1900 to 2050.” Science 384 (6694): 458–65. https://doi.org/10.1126/science.adn3441.
 
-# Note: This repository was cloned from [oharac GitHub](https://github.com/oharac/bd_chi). The original `ReadMe` is below for reference
+
+# Note: This repository was originally cloned from [oharac GitHub](https://github.com/oharac/bd_chi). The original `ReadMe` is below for reference
 
 ## Files used / modified
 
 -   `ms_figs/fig2_impact_intens_map_3panel.Rmd`, this became `ncba_fig2`
 
-## At-risk marine biodiversity faces extensive, expanding, and intensifying human impacts
+## At-risk marine biodiversity faces extensive, expanding, and intensifying human impacts (Original)
 
 Repository for code and generated data for "At-risk marine biodiversity
 faces extensive, expanding, and intensifying human impacts" by Casey C.
